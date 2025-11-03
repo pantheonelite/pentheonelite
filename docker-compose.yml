@@ -1,0 +1,156 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: vibe-trading-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DATABASE_USER:-postgres}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}  # MUST be set in .env - no default!
+      POSTGRES_DB: ${DATABASE_NAME:-hedge_fund}
+      PGDATA: /var/lib/postgresql/data/pgdata
+      # Security: Disable trust authentication
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+      # Security: Restrict connection parameters
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
+      # Additional PostgreSQL security settings
+      POSTGRES_INITDB_WALDIR: /var/lib/postgresql/data/wal
+    # SECURITY: Expose PostgreSQL ONLY to localhost (127.0.0.1) for local backend/frontend
+    # This allows local apps to connect while blocking external network access
+    # Format: "127.0.0.1:HOST_PORT:CONTAINER_PORT" binds only to localhost interface
+    ports:
+      - "127.0.0.1:5432:5432"
+    # Keep expose for Docker network access (container-to-container communication)
+    expose:
+      - "5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Mount custom pg_hba.conf to temporary location for entrypoint script to copy
+      # This avoids read-only filesystem errors during PostgreSQL initialization
+      - ./docker/postgres/pg_hba.conf:/tmp/custom_pg_hba.conf:ro
+      # Mount custom entrypoint to handle pg_hba.conf installation
+      - ./docker/postgres/docker-entrypoint.sh:/usr/local/bin/docker-entrypoint-custom.sh:ro
+    entrypoint: ["/usr/local/bin/docker-entrypoint-custom.sh"]
+    # Labels for network policy enforcement
+    labels:
+      - "traefik.enable=false"
+      - "security.postgres.only_app_network=true"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER:-postgres} -d ${DATABASE_NAME:-hedge_fund}"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 40s
+    # Security hardening: Drop unnecessary capabilities
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    # PostgreSQL runs as postgres user inside container (UID 999)
+    # This is handled by the postgres image itself - no need to override
+    tmpfs:
+      - /tmp
+      - /var/run
+    networks:
+      - app-network
+      # Explicitly do NOT attach to default network
+    # Resource limits to prevent resource exhaustion attacks
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  nginx:
+    image: nginx:latest
+    container_name: nginx-proxy
+    restart: unless-stopped
+    # CRITICAL SECURITY: Only expose HTTP/HTTPS to host, NOT to all interfaces
+    # Use 127.0.0.1:80:80 if you want to restrict to localhost only
+    # For production behind a firewall, current setup is acceptable
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx-production-secure.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/blocklists:/etc/nginx/blocklists:ro
+      - ./nginx/logs:/etc/nginx/logs:rw
+      - /etc/letsencrypt:/etc/nginx/ssl:ro
+      - /var/www/certbot:/var/www/certbot:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+      - NET_BIND_SERVICE
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    networks:
+      - app-network
+    depends_on:
+      - postgres
+    # Security: Restrict network access - nginx can connect to host but not other external services
+
+  certbot:
+    image: certbot/certbot:latest
+    container_name: certbot
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt:rw
+      - /var/www/certbot:/var/www/certbot:rw
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    name: vibe-trading-network
+    driver: bridge
+    # Security: Enable IPAM for better network isolation
+    # Note: internal=false allows nginx to connect to host.docker.internal for backend/frontend
+    # PostgreSQL is secured via expose (not ports) and pg_hba.conf restrictions
+    # IMPORTANT: This network is NOT isolated (internal: false) to allow nginx->host.docker.internal
+    # But PostgreSQL is still protected via expose-only and pg_hba.conf restrictions
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.20.0.0/16
+          gateway: 172.20.0.1
+    # Add driver options for additional security
+    driver_opts:
+      com.docker.network.bridge.enable_icc: "true"
+      com.docker.network.bridge.enable_ip_masquerade: "true"
+      com.docker.network.bridge.host_binding_ipv4: "0.0.0.0"
+
+volumes:
+  postgres_data:
+    name: vibe-trading-postgres-data

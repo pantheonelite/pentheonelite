@@ -1,0 +1,425 @@
+# Repository Guidelines
+
+## Project Structure & Module Organization
+- `src/` houses the trading graph, agent logic (`agents/`, `graph/`, `tools/`), and CLI entry points (`main.py`, `backtester.py`).
+- `app/backend/` contains the FastAPI service; route definitions live in `routes/`, orchestration in `services/`, and database artifacts under `database/` and `alembic/`. **Alembic migration files should follow the `000x_description.py` naming convention (e.g., `0001_initial_schema.py`).**
+- `app/frontend/` is the Vite + React dashboard (Tailwind config in `tailwind.config.ts`, static assets in `public/`).
+- `tests/` mirrors the Python domains with fixtures in `tests/fixtures/` and scenario suites under `tests/backtesting/integration/`.
+- `docker/` packages runtime images for local or CI builds.
+
+## Build, Test, and Development Commands
+
+**`uv` is the designated Python package manager for this project.**
+
+- `uv sync --all-groups` sets up the Python toolchain; run from the repo root.
+- `uv run python src/main.py --ticker AAPL,MSFT --start-date 2024-01-01` executes the multi-agent CLI.
+- `uv run python src/backtester.py --ticker AAPL,MSFT` replays historical trades.
+- `uv run uvicorn main:app --reload --app-dir app/backend` runs the API for the web app.
+- `cd app/frontend && pnpm install && pnpm dev` starts the Vite dev server.
+- `uv run pytest` runs all Python tests; use `-k` to target a subset.
+
+## Service Architecture & Object-Oriented Programming
+
+### Service Layer Design
+- **OOP Pattern:** All services in `app/backend/services/` follow Object-Oriented Programming patterns with proper class-based architecture.
+- **Service Classes:** Each service is implemented as a class with methods for specific functionality:
+  - `AgentService`: Manages agent function creation and registration
+  - `GraphService`: Handles trading agent graph creation and execution
+  - `PortfolioService`: Manages portfolio structures and calculations
+  - `OllamaService`: Provides local LLM interaction capabilities
+  - `CryptoBacktestService`: Executes cryptocurrency trading backtests
+  - `BacktestService`: Core backtesting functionality
+  - `ApiKeyService`: Manages API key operations
+
+### Service Usage Pattern
+```python
+# Instantiate service classes directly
+from app.backend.services.agent_service import AgentService
+from app.backend.services.graph_service import GraphService
+from app.backend.services.portfolio_service import PortfolioService
+
+# Create service instances
+agent_service = AgentService()
+graph_service = GraphService()
+portfolio_service = PortfolioService()
+
+# Use service methods
+agent_function = agent_service.create_agent_function(my_func, "agent_id")
+graph = graph_service.create_graph(nodes, edges)
+portfolio = portfolio_service.create_portfolio(10000, 0.1, ["BTC", "ETH"])
+
+# Async methods use 'a' prefix
+result = await graph_service.arun_graph(graph, portfolio, tickers, start_date, end_date, model_name, model_provider)
+backtest_result = await backtest_service.arun_backtest(progress_callback=callback)
+```
+
+### Service Dependencies
+- Services can depend on other services through composition
+- `GraphService` uses `AgentService` internally for agent function creation
+- Services maintain their own state and can be instantiated multiple times if needed
+
+## Crypto Data & LangGraph Tools Integration
+
+### Aster Connector Integration
+- **Installation:** `uv add git+https://github.com/asterdex/aster-connector-python.git` for Aster Finance API access
+- **Usage:** Use Aster connector for cryptocurrency exchange interactions, replacing CCXT
+- **Free Data:** Aster provides public market data (prices, volumes, order books) without API keys
+- **Location:** Place Aster-based tools in `app/backend/src/tools/aster/` directory
+
+### LangGraph Custom Tools
+- **Tool Development:** Create custom LangGraph tools for crypto data, news crawling, and web search
+- **News Crawling:** Implement RSS feed readers and web scrapers for crypto sentiment analysis
+- **Web Search:** Integrate search engines for real-time crypto information gathering
+- **Location:** Place custom tools in `src/tools/` directory with clear naming conventions
+
+### Tool Integration Guidelines
+- **Error Handling:** Implement robust error handling for API rate limits and network issues
+- **Caching:** Use Redis for caching frequently accessed crypto data and news content
+- **Async Operations:** Leverage `asyncio` for concurrent data fetching from multiple sources
+- **Testing:** Create comprehensive tests for crypto data tools and news crawling functionality
+
+## Critical Development Rules
+
+### Configuration & Architecture Rules
+- **NEVER create global configuration variables or singletons**
+- **NEVER create function-based imports for configuration**
+- **NEVER maintain backward compatibility for deprecated patterns**
+- **ALWAYS use direct instantiation with local configuration**
+- **ALWAYS keep configuration local to each module/class**
+- **ALWAYS create separate config files for each business domain**
+
+### Configuration Management
+- **No Global Configs:** Never create global configuration variables or singletons
+- **No Function-Based Imports:** Never create functions to import configuration from other files
+- **No Backward Compatibility:** Never maintain backward compatibility for deprecated patterns
+- **Dependency Injection:** Pass configuration as parameters to functions and classes
+- **Local Configuration:** Keep configuration local to each module/class
+- **Direct Instantiation:** Always instantiate services and clients directly with local config
+- **Separate Config Files:** Each business domain must have its own config file in `app/backend/config/`
+
+### Anti-Patterns to Avoid
+```python
+# ❌ NEVER DO: Global configs
+_global_config = None
+def get_config(): ...
+
+# ❌ NEVER DO: Function-based imports
+def get_client(): ...
+
+# ❌ NEVER DO: Backward compatibility
+def get_service(use_old=False): ...
+
+# ❌ NEVER DO: Factory functions
+def create_service(): ...
+
+# ❌ NEVER DO: Unified config files
+class UnifiedSettings(BaseSettings):
+    # All settings in one file
+    api_settings: ApiSettings
+    database_settings: DatabaseSettings
+    llm_settings: LLMSettings
+    # ... all other settings
+```
+
+### Required Patterns
+```python
+# ✅ ALWAYS DO: Direct instantiation
+service = AsterDataService()
+client = AsterClient(AsterConfig())
+
+# ✅ ALWAYS DO: Local configuration
+class MyService:
+    def __init__(self, config: MyConfig):
+        self.config = config
+
+# ✅ ALWAYS DO: Separate config files
+# app/backend/config/api.py
+class ApiSettings(BaseSettings):
+    title: str = "API Title"
+    # ... only API-related settings
+
+# app/backend/config/database.py
+class DatabaseSettings(BaseSettings):
+    url: str
+    # ... only database-related settings
+
+# app/backend/config/llm.py
+class LLMSettings(BaseSettings):
+    openai_api_key: str
+    # ... only LLM-related settings
+```
+
+## Coding Style & Naming Conventions
+- Python: 4-space indentation, `snake_case` for modules/functions, `PascalCase` for classes; format and sort imports using `ruff`.
+- **Python Typing:** Avoid `from typing import List, Dict, Optional, Union`. Prefer built-in types (`list`, `dict`) and use `| None` for optional types and `|` for unions. Prefer constants over raw strings where appropriate.
+- **No Future Annotations:** Do not use `from __future__ import annotations` - use direct type annotations instead.
+- **Async Function Naming:** Use `a` prefix for async functions instead of `_async` suffix. Examples: `arun_graph()` instead of `run_graph_async()`, `arun_backtest()` instead of `run_backtest_async()`.
+- **No Global Configs:** Never create global configuration variables, singletons, or function-based imports for configuration.
+- **No Backward Compatibility:** Never maintain backward compatibility for deprecated patterns or old implementations.
+- **Local Configuration:** Always keep configuration local to each module/class and pass as parameters.
+- **Direct Instantiation:** Always use direct instantiation instead of factory functions or global accessors.
+- **Docstring Format:** All Python docstrings must follow the NumPy docstring format. Use the following structure:
+  ```python
+  def function_name(param1: type, param2: type) -> return_type:
+      """
+      Brief description of the function.
+
+      Parameters
+      ----------
+      param1 : type
+          Description of param1.
+      param2 : type
+          Description of param2.
+
+      Returns
+      -------
+      return_type
+          Description of the return value.
+
+      Raises
+      ------
+      ValueError
+          Description of when this exception is raised.
+
+      Examples
+      --------
+      >>> function_name("example", 42)
+      "expected output"
+      """
+  ```
+- Ruff, mypy, and gitleaks run through `pre-commit`; install with `pre-commit install`. Always run `pre-commit run --all-files` after any code changes to ensure linting and formatting standards are met before pushing. **All Python code must adhere to the rules defined in `app/backend/ruff.toml`**.
+- TypeScript/React: rely on ESLint + Prettier; keep components in PascalCase and hooks in `useCamelCase`.
+- Environment files go in `.env`; mirror updates in `.env.example` and avoid committing secrets.
+
+## Testing Guidelines
+- Prefer `pytest` unit coverage alongside integration checks in `tests/backtesting/integration/`.
+- Name test modules `test_*.py` and keep fixtures reusable under `tests/fixtures/`.
+- Add regression tests for new agents or risk models and validate failure paths, not just happy flows.
+- Surface expected outputs in PRs (e.g., `uv run pytest -q`) when requesting review.
+
+## Commit & Pull Request Guidelines
+- Write concise, present-tense commit subjects (≤72 chars) and expand context in the body if needed; group related changes per commit.
+- Ensure commits are lint- and test-clean; run `pre-commit run --all-files` and `uv run pytest` before pushing.
+- PRs should summarize the change, call out any config updates, link issues, and include CLI or UI screenshots when applicable.
+- Tag reviewers early and highlight follow-up work or known gaps in the description.
+
+## UI guidelines
+
+### Document Overview
+- **Product Name**: Crypto Pantheon
+- **Version**: 1.0
+- **Date**: October 25, 2025
+- **Purpose**: This design system provides a comprehensive, prescriptive guide for building consistent UI components across the Crypto Pantheon platform. It ensures all elements align with the "Mythic Futurism" theme—merging ancient mythological grandeur (e.g., pantheon temples, divine auras) with cyberpunk crypto aesthetics (e.g., neon circuits, holographic interfaces, blockchain runes). The system prioritizes dark-mode usability, performance visualizations (e.g., PnL charts, leaderboards), and immersive storytelling to evoke FOMO and demonstrate trading agent excellence.
+
+  This document is tailored for AI coding assistants (e.g., in Cursor or similar tools) to generate code without deviations. All components must be modular (using React/Next.js patterns), responsive, accessible (WCAG 2.1 AA compliant), and optimized for performance (e.g., lazy loading for charts). Do not introduce new colors, fonts, or styles outside this spec—adhere strictly to maintain brand integrity.
+
+- **Key Principles**:
+  - **Modularity**: All UI elements are built as reusable React components (e.g., via Tailwind CSS classes for styling).
+  - **Consistency**: Use predefined tokens (e.g., colors as variables) to avoid variations.
+  - **Thematic Immersion**: Elements evoke a "pantheon forge"—holographic glows, subtle animations, cosmic backgrounds.
+  - **Performance Focus**: Prioritize data visualizations (charts, metrics) as narrative tools, with clear hierarchies for PnL, win rates, etc.
+  - **Accessibility**: High contrast ratios (>4.5:1), ARIA labels, keyboard navigation.
+  - **Tech Stack Assumptions**: React/Next.js, Tailwind CSS (for utility classes), Chart.js (for visuals), Framer Motion (for animations), Heroicons or custom SVGs for icons.
+
+### 1. Color Palette
+Colors are defined as CSS variables (e.g., in `globals.css` or Tailwind config). Use semantic names for application (e.g., `bg-primary` instead of hex directly). Theme: Cosmic depths with neon energy.
+
+- **Primary Colors**:
+  - `--primary-500`: #8B5CF6 (Neon Purple – Accents, CTAs, highlights; evokes divine energy).
+  - `--primary-600`: #7C3AED (Darker purple for hovers/active states).
+  - `--primary-300`: #A78BFA (Lighter for subtle glows).
+
+- **Secondary Colors**:
+  - `--secondary-500`: #10B981 (Emerald Green – Positive metrics, e.g., +PnL; growth/success).
+  - `--secondary-600`: #059669 (Darker for hovers).
+  - `--secondary-300`: #34D399 (Lighter for charts).
+
+- **Accent Colors**:
+  - `--accent-orange`: #F97316 (Fiery Orange – Warnings, high-risk metrics; Aster-inspired action).
+  - `--accent-red`: #EF4444 (Red – Negative PnL, losses).
+  - `--accent-blue`: #3B82F6 (Blue – Neutral holds, info).
+
+- **Neutral Colors**:
+  - `--background`: #0A0A1E (Deep Cosmic Blue-Black – Main BG).
+  - `--surface`: #1A1A3A (Darker panel BG for cards/tables).
+  - `--text-primary`: #F3F4F6 (Light Gray – Body text).
+  - `--text-secondary`: #9CA3AF (Muted Gray – Subtext, labels).
+  - `--border`: #2D2D4A (Subtle cosmic border).
+  - `--shadow`: rgba(139, 92, 246, 0.2) (Purple glow for shadows/hovers).
+
+- **Usage Rules**:
+  - Positive metrics (e.g., +PnL): Green shades.
+  - Negative (e.g., drawdown): Red/orange.
+  - All elements must maintain contrast: e.g., white text on dark BG.
+  - Gradients: Use for BGs, e.g., `bg-gradient-to-r from-[--background] to-[--surface]`.
+
+### 2. Typography
+Fonts evoke sleek futurism with mythic subtlety. Use Google Fonts or system fonts for loading speed.
+
+- **Font Families**:
+  - Primary: 'Inter', sans-serif (Clean, modern; default for body/headings).
+  - Accent: 'Cinzel', serif (Subtle Greek-inspired serifs for headlines/titles; use sparingly for mythic feel).
+
+- **Sizes (Rem-based for scalability)**:
+  - `--font-size-xs`: 0.75rem (12px – Fine print, tooltips).
+  - `--font-size-sm`: 0.875rem (14px – Labels, subtext).
+  - `--font-size-base`: 1rem (16px – Body text).
+  - `--font-size-md`: 1.125rem (18px – Subheadings).
+  - `--font-size-lg`: 1.25rem (20px – Metrics, cards).
+  - `--font-size-xl`: 1.5rem (24px – Section titles).
+  - `--font-size-2xl`: 1.875rem (30px – Hero subheads).
+  - `--font-size-3xl`: 2.25rem (36px – Hero headlines).
+  - `--font-size-4xl`: 3rem (48px – Major emphases).
+
+- **Weights**:
+  - 400 (Regular – Body).
+  - 500 (Medium – Labels).
+  - 600 (Semi-bold – Headings).
+  - 700 (Bold – Metrics, CTAs).
+
+- **Line Heights**: 1.5 (default), 1.25 (dense text like tables).
+- **Usage Rules**:
+  - Headlines: Cinzel for mythic flair (e.g., "Pantheon Arena").
+  - Body: Inter everywhere else.
+  - Text Shadows: For holographics, e.g., `text-shadow: 0 0 10px var(--primary-300)` on CTAs.
+  - Uppercase: Use for badges/labels (e.g., "IN PROGRESS").
+
+### 3. Spacing and Grid System
+Consistent rhythm for layouts. Use rem-based spacing.
+
+- **Spacing Scale** (Multiples of 4px base):
+  - `--space-1`: 0.25rem (4px – Tight padding).
+  - `--space-2`: 0.5rem (8px – Small gaps).
+  - `--space-3`: 0.75rem (12px – Default padding).
+  - `--space-4`: 1rem (16px – Cards, buttons).
+  - `--space-6`: 1.5rem (24px – Sections).
+  - `--space-8`: 2rem (32px – Major margins).
+  - `--space-12`: 3rem (48px – Hero padding).
+
+- **Grid System**:
+  - Default: 12-column responsive grid (Tailwind: grid-cols-12).
+  - Breakpoints: Mobile (<640px: stack vertical), Tablet (640-1024px: 2-4 cols), Desktop (>1024px: full grid).
+  - Gutters: `--space-4` between columns.
+
+- **Usage Rules**: Always use flex/grid for layouts; no floats. Vertical rhythm: Multiples of `--space-4` for sections.
+
+### 4. Icons and Imagery
+- **Icons**: Heroicons (outline/solid) or custom SVGs. Cosmic style: Add glow filters (e.g., SVG filter: blur + color dodge).
+  - Sizes: 16px (small), 24px (medium), 32px (large).
+  - Colors: Inherit text or use accents (e.g., green check for success).
+
+- **Imagery**:
+  - Agent Silhouettes: Holographic deities (e.g., oracle with glowing eyes)—use SVG/PNG with transparency.
+  - Backgrounds: Subtle stars/particles (CSS canvas or SVG).
+  - Charts/Icons: Neon lines, glowing data points.
+
+- **Animations**: Framer Motion.
+  - Entrance: Fade-in (opacity 0→1, 0.5s).
+  - Hover: Scale 1.05 + glow (shadow increase).
+  - Loading: Pulsing auras (keyframes opacity 0.5→1).
+  - Duration: 300ms ease-in-out; no excessive motion.
+
+### 5. Component Library
+All components are React functional, with props for variants. Use Tailwind for classes. Export from `/components` folder.
+
+#### 5.1 Buttons
+- **Variants**: Primary (neon purple BG), Secondary (green outline), Danger (red).
+- **Sizes**: Small (py-2 px-4), Medium (py-3 px-6), Large (py-4 px-8).
+- **States**: Default, Hover (brighter glow), Active (scale 0.95), Disabled (opacity 0.5).
+- **Example Code**:
+  ```jsx
+  const Button = ({ variant = 'primary', size = 'medium', children, disabled }) => (
+    <button
+      className={`rounded-lg font-medium text-white shadow-md hover:shadow-lg transition-all
+        ${variant === 'primary' ? 'bg-[--primary-500] hover:bg-[--primary-600]' : ''}
+        ${size === 'medium' ? 'py-3 px-6' : ''}
+        ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+      disabled={disabled}
+    >
+      {children}
+    </button>
+  );
+  ```
+
+#### 5.2 Cards (e.g., AgentCard)
+- **Structure**: Header (title/icon), Body (content), Footer (actions).
+- **Variants**: Agent (with hologram image), Metric (with number highlight).
+- **Styles**: BG `--surface`, border `--border`, padding `--space-4`, rounded-lg.
+- **Example**: For AgentCard – Include deity image, name, traits list.
+  ```jsx
+  const AgentCard = ({ name, traits, imageUrl }) => (
+    <div className="bg-[--surface] border border-[--border] rounded-lg p-[--space-4] shadow-[0_0_10px_var(--primary-300)]">
+      <img src={imageUrl} alt={name} className="w-16 h-16 rounded-full mx-auto mb-2 filter drop-shadow-[0_0_5px_var(--primary-500)]" />
+      <h3 className="text-lg font-semibold text-[--text-primary]">{name}</h3>
+      <ul className="text-sm text-[--text-secondary]">{traits.map(t => <li key={t}>{t}</li>)}</ul>
+    </div>
+  );
+  ```
+
+#### 5.3 Tables (e.g., LeaderboardTable)
+- **Structure**: Thead (bold headers), Tbody (rows with alternating BG).
+- **Styles**: Border-collapse, cells: p-[--space-2], text-align left.
+- **Responsive**: Overflow-x-auto on mobile.
+- **Example**:
+  ```jsx
+  const LeaderboardTable = ({ data }) => (
+    <table className="w-full text-[--text-primary] bg-[--surface] rounded-lg overflow-hidden">
+      <thead className="bg-[--background]"><tr><th className="p-[--space-3] text-left">Rank</th>...</tr></thead>
+      <tbody>
+        {data.map(row => (
+          <tr key={row.rank} className="border-t border-[--border]">
+            <td className="p-[--space-3]">{row.rank}</td>...
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+  ```
+
+#### 5.4 Charts (e.g., PnLChart)
+- **Library**: Chart.js (line/bar/pie).
+- **Styles**: BG transparent, lines: 2px thick, points: glow on hover.
+- **Colors**: Use palette (green for positive, red for negative).
+- **Responsive**: MaintainAspectRatio: false.
+- **Example** (Line Chart):
+  ```jsx
+  import { Line } from 'react-chartjs-2';
+  const PnLChart = ({ data }) => (
+    <div className="p-[--space-4] bg-[--surface] rounded-lg">
+      <Line data={data} options={{
+        responsive: true,
+        scales: { y: { grid: { color: '--border' } } },
+        plugins: { legend: { labels: { color: '--text-primary' } } }
+      }} />
+    </div>
+  );
+  ```
+
+#### 5.5 Forms (e.g., Sign-Up)
+- **Elements**: Inputs (bg-[--background], border-[--border], p-[--space-3]), Labels (text-sm).
+- **Validation**: Error text in red.
+- **Example**: Input with label.
+
+#### 5.6 Modals/Popups
+- **Styles**: Overlay (rgba(0,0,0,0.8)), Content (bg-[--surface], rounded-lg, max-w-md).
+- **Animations**: Scale in from 0.95.
+
+#### 5.7 Navigation (Navbar/Sidebar)
+- **Navbar**: Fixed top, flex justify-between, links with hover underline.
+- **Sidebar**: Vertical, agent list with collapsible sections.
+
+### 6. Layout Patterns
+- **Hero**: Full-viewport, centered content.
+- **Sections**: Padding `--space-8` top/bottom, max-width 1280px centered.
+- **Dashboards**: Grid (sidebar 25%, main 75%).
+
+### 7. Responsiveness and Accessibility
+- **Breakpoints**: sm (640px), md (768px), lg (1024px), xl (1280px).
+- **Mobile**: Stack cards/tables vertically.
+- **Accessibility**: ARIA (e.g., aria-label on icons), focus states (outline purple), alt text on images, semantic HTML.
+
+### 8. Versioning and Updates
+- Track changes: e.g., v1.1 for new components.
+- Enforcement: AI assistants must reference this doc verbatim—no improvisations.
+
+This system ensures all UI builds are on-brand and consistent. For implementation, start with Tailwind config extensions for variables.

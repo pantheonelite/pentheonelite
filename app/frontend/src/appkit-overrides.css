@@ -1,0 +1,118 @@
+/* AppKit Modal Overrides - Hide unwanted authentication options */
+
+/* Hide email authentication section */
+w3m-modal [data-testid="email-auth"],
+w3m-modal [data-testid="email-section"],
+w3m-modal .w3m-email-section,
+w3m-modal [class*="email"] {
+  display: none !important;
+}
+
+/* Hide social authentication section */
+w3m-modal [data-testid="social-auth"],
+w3m-modal [data-testid="social-section"],
+w3m-modal .w3m-social-section,
+w3m-modal [class*="social"] {
+  display: none !important;
+}
+
+/* Hide Google authentication */
+w3m-modal [data-testid="google-auth"],
+w3m-modal [class*="google"] {
+  display: none !important;
+}
+
+/* Hide Discord authentication */
+w3m-modal [data-testid="discord-auth"],
+w3m-modal [class*="discord"] {
+  display: none !important;
+}
+
+/* Hide GitHub authentication */
+w3m-modal [data-testid="github-auth"],
+w3m-modal [class*="github"] {
+  display: none !important;
+}
+
+/* Hide Twitter/X authentication */
+w3m-modal [data-testid="twitter-auth"],
+w3m-modal [class*="twitter"],
+w3m-modal [class*="x-"] {
+  display: none !important;
+}
+
+/* Hide search wallet input - More comprehensive selectors */
+w3m-modal [data-testid="search-wallet"],
+w3m-modal [class*="search"],
+w3m-modal input[placeholder*="Search"],
+w3m-modal input[placeholder*="search"],
+w3m-modal .w3m-search,
+w3m-modal [class*="search-input"],
+w3m-modal [class*="search-bar"] {
+  display: none !important;
+}
+
+/* Hide "or" divider */
+w3m-modal [data-testid="divider"],
+w3m-modal .w3m-divider,
+w3m-modal [class*="divider"] {
+  display: none !important;
+}
+
+/* Hide additional wallet options beyond the featured ones */
+w3m-modal [data-testid="more-wallets"],
+w3m-modal [class*="more-wallets"],
+w3m-modal [class*="additional-wallets"] {
+  display: none !important;
+}
+
+/* Hide footer elements */
+w3m-modal [data-testid="footer"],
+w3m-modal .w3m-footer,
+w3m-modal [class*="footer"],
+w3m-modal [class*="UX by"],
+w3m-modal [class*="reown"],
+w3m-modal [class*="credits"] {
+  display: none !important;
+}
+
+/* Text-content selectors like :contains are not supported; removed for Next.js compatibility */
+
+/* Ensure only featured wallets are visible */
+w3m-modal .w3m-wallet-list {
+  max-height: 200px !important;
+  overflow: hidden !important;
+}
+
+/* Hide wallet count or search results */
+w3m-modal [class*="wallet-count"],
+w3m-modal [class*="search-results"] {
+  display: none !important;
+}
+
+/* Hide any input fields that might be search related */
+w3m-modal input[type="text"],
+w3m-modal input[type="search"] {
+  display: none !important;
+}
+
+/* Hide elements with magnifying glass icons */
+w3m-modal [class*="magnifying"],
+w3m-modal [class*="search-icon"],
+w3m-modal svg[class*="search"] {
+  display: none !important;
+}
+
+/* Removed nested selectors and non-standard :has-text; keep flat selectors above */
+
+/* Global selectors for AppKit modal */
+w3m-modal *[placeholder*="Search"],
+w3m-modal *[placeholder*="search"],
+w3m-modal input[type="text"],
+w3m-modal input[type="search"],
+w3m-modal .w3m-search,
+w3m-modal [class*="search"] {
+  display: none !important;
+}
+
+/* Removed unsupported text-content selectors */

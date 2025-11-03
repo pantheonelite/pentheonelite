@@ -1,0 +1,462 @@
+---
+alwaysApply: true
+---
+
+# Python Development Rules
+
+## Code Style & Naming Conventions
+
+### Python Typing
+- **Avoid**: `from typing import List, Dict, Optional, Union`
+- **Prefer**: Built-in types (`list`, `dict`) and use `| None` for optional types and `|` for unions
+- **Prefer**: Constants over raw strings where appropriate
+
+### Function Naming
+- **Async Functions**: Use `a` prefix instead of `_async` suffix
+  - ✅ `arun_graph()` instead of `run_graph_async()`
+  - ✅ `arun_backtest()` instead of `run_backtest_async()`
+
+### Future Annotations
+- **Never use**: `from __future__ import annotations`
+- **Always use**: Direct type annotations instead
+
+### Docstring Format
+All Python docstrings must follow the NumPy docstring format:
+
+```python
+def function_name(param1: type, param2: type) -> return_type:
+    """
+    Brief description of the function.
+
+    Parameters
+    ----------
+    param1 : type
+        Description of param1.
+    param2 : type
+        Description of param2.
+
+    Returns
+    -------
+    return_type
+        Description of the return value.
+
+    Raises
+    ------
+    ValueError
+        Description of when this exception is raised.
+
+    Examples
+    --------
+    >>> function_name("example", 42)
+    "expected output"
+    """
+```
+
+## Code Quality Standards
+
+### Formatting & Linting
+- **Tool**: Use `ruff` for formatting and linting
+- **Pre-commit**: Install with `pre-commit install`
+- **Before Push**: Always run `pre-commit run --all-files`
+- **Config**: All Python code must adhere to `app/backend/ruff.toml`
+
+### Testing
+- **Framework**: Use `pytest` for all tests
+- **Coverage**: Aim for 90%+ test coverage
+- **Naming**: Test modules must be named `test_*.py`
+- **Fixtures**: Keep fixtures reusable under `tests/fixtures/`
+- **Integration**: Add integration tests in `tests/backtesting/integration/`
+
+### Error Handling
+- **Specific Exceptions**: Use specific exception types, not bare `except`
+- **Informative Messages**: Provide informative error messages
+- **Custom Exceptions**: Implement custom exception classes when needed
+- **Graceful Handling**: Handle exceptions gracefully
+
+### Logging
+- **Module**: Use the `logging` module judiciously
+- **Events**: Log important events, warnings, and errors
+- **Levels**: Use appropriate log levels (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+
+## Architecture Patterns
+
+### Service Layer Design
+- **OOP Pattern**: All services follow Object-Oriented Programming patterns
+- **Class-based**: Each service is implemented as a class with methods
+- **Composition**: Services can depend on other services through composition
+- **State Management**: Services maintain their own state
+
+### Service Usage Pattern
+```python
+# Instantiate service classes directly
+from app.backend.services.agent_service import AgentService
+from app.backend.services.graph_service import GraphService
+from app.backend.services.portfolio_service import PortfolioService
+
+# Create service instances
+agent_service = AgentService()
+graph_service = GraphService()
+portfolio_service = PortfolioService()
+
+# Use service methods
+agent_function = agent_service.create_agent_function(my_func, "agent_id")
+graph = graph_service.create_graph(nodes, edges)
+portfolio = portfolio_service.create_portfolio(10000, 0.1, ["BTC", "ETH"])
+
+# Async methods use 'a' prefix
+result = await graph_service.arun_graph(graph, portfolio, tickers, start_date, end_date, model_name, model_provider)
+backtest_result = await backtest_service.arun_backtest(progress_callback=callback)
+```
+
+## Performance Optimization
+
+### Asynchronous Programming
+- **I/O Operations**: Use `async` and `await` for I/O-bound operations
+- **Concurrency**: Maximize concurrency with proper async patterns
+- **Resource Management**: Ensure proper release of unused resources
+
+### Caching
+- **Functions**: Use `functools.lru_cache` or `@cache` (Python 3.9+)
+- **FastAPI**: Use `fastapi.Depends` caching where appropriate
+- **Redis**: Use Redis for caching frequently accessed data
+
+### Resource Monitoring
+- **Tool**: Use `psutil` to monitor resource usage
+- **Bottlenecks**: Identify and resolve performance bottlenecks
+- **Memory**: Prevent memory leaks by proper resource cleanup
+
+### Concurrency
+- **Futures**: Use `concurrent.futures` for CPU-bound tasks
+- **Asyncio**: Use `asyncio` for I/O-bound concurrent operations
+- **Threading**: Use threading judiciously for blocking operations
+
+## Database Best Practices
+
+### Schema Design
+- **Efficiency**: Design database schemas efficiently
+- **Indexes**: Use indexes wisely for query optimization
+- **Relationships**: Define proper relationships between entities
+
+### Query Optimization
+- **Performance**: Optimize queries for performance
+- **N+1 Problems**: Avoid N+1 query problems
+- **Connection Pooling**: Use connection pooling appropriately
+
+## API Development with FastAPI
+
+### Data Validation
+- **Pydantic**: Use Pydantic models for request/response validation
+- **Type Safety**: Ensure type safety throughout the API
+
+### Dependency Injection
+- **FastAPI**: Use FastAPI's dependency injection effectively
+- **Services**: Inject services as dependencies
+
+### Routing
+- **RESTful**: Define clear and RESTful API routes
+- **APIRouter**: Use FastAPI's `APIRouter` for route organization
+
+### Background Tasks
+- **FastAPI**: Use FastAPI's `BackgroundTasks` for background processing
+- **Celery**: Integrate with Celery for complex background tasks
+
+### Security
+- **Authentication**: Implement robust authentication (OAuth 2.0, JWT)
+- **Authorization**: Implement proper authorization mechanisms
+- **Input Validation**: Validate all user inputs
+
+### Documentation
+- **OpenAPI**: Use FastAPI's OpenAPI support for auto-generated docs
+- **Examples**: Provide clear examples in API documentation
+
+### Versioning
+- **URL Prefixes**: Plan for API versioning from the start
+- **Headers**: Use headers for versioning when appropriate
+
+### CORS
+- **Configuration**: Configure CORS settings correctly
+- **Security**: Ensure CORS doesn't compromise security
+
+## Environment & Dependencies
+
+### Package Management
+- **Tool**: Use `uv` as the designated Python package manager
+- **Sync**: Run `uv sync --all-groups` to set up the toolchain
+- **Dependencies**: Manage dependencies through `pyproject.toml`
+
+### Environment Files
+- **Location**: Environment files go in `.env`
+- **Example**: Mirror updates in `.env.example`
+- **Secrets**: Never commit secrets to version control
+
+### Python Version
+- **Target**: Prioritize Python 3.11+ for new features
+- **Compatibility**: Ensure compatibility with the target Python version
+
+## Development Workflow
+
+### Pre-commit Hooks
+- **Install**: `pre-commit install`
+- **Run**: `pre-commit run --all-files` before pushing
+- **Tools**: Includes ruff, mypy, and gitleaks
+
+### Testing Workflow
+- **Unit Tests**: Write comprehensive unit tests
+- **Integration Tests**: Add integration tests for complex workflows
+- **Regression Tests**: Add regression tests for new agents or risk models
+- **Failure Paths**: Test failure paths, not just happy flows
+
+### Code Review
+- **Coverage**: Surface expected outputs in PRs
+- **Examples**: Include CLI or UI screenshots when applicable
+- **Documentation**: Call out any config updates in PRs
+- **Reviewers**: Tag reviewers early and highlight follow-up work
+
+## Commit & Pull Request Guidelines
+
+### Commit Messages
+- **Format**: Write concise, present-tense commit subjects (≤72 chars)
+- **Context**: Expand context in the body if needed
+- **Grouping**: Group related changes per commit
+
+### Pull Requests
+- **Summary**: Summarize the change clearly
+- **Config Updates**: Call out any config updates
+- **Issues**: Link to relevant issues
+- **Screenshots**: Include CLI or UI screenshots when applicable
+- **Follow-up**: Highlight follow-up work or known gaps
+
+### Quality Gates
+- **Linting**: Ensure commits are lint-clean
+- **Testing**: Ensure commits are test-clean
+- **Pre-commit**: Run `pre-commit run --all-files` before pushing
+- **Tests**: Run `uv run pytest` before pushing
+# Python Development Rules
+
+## Code Style & Naming Conventions
+
+### Python Typing
+- **Avoid**: `from typing import List, Dict, Optional, Union`
+- **Prefer**: Built-in types (`list`, `dict`) and use `| None` for optional types and `|` for unions
+- **Prefer**: Constants over raw strings where appropriate
+
+### Function Naming
+- **Async Functions**: Use `a` prefix instead of `_async` suffix
+  - ✅ `arun_graph()` instead of `run_graph_async()`
+  - ✅ `arun_backtest()` instead of `run_backtest_async()`
+
+### Future Annotations
+- **Never use**: `from __future__ import annotations`
+- **Always use**: Direct type annotations instead
+
+### Docstring Format
+All Python docstrings must follow the NumPy docstring format:
+
+```python
+def function_name(param1: type, param2: type) -> return_type:
+    """
+    Brief description of the function.
+
+    Parameters
+    ----------
+    param1 : type
+        Description of param1.
+    param2 : type
+        Description of param2.
+
+    Returns
+    -------
+    return_type
+        Description of the return value.
+
+    Raises
+    ------
+    ValueError
+        Description of when this exception is raised.
+
+    Examples
+    --------
+    >>> function_name("example", 42)
+    "expected output"
+    """
+```
+
+## Code Quality Standards
+
+### Formatting & Linting
+- **Tool**: Use `ruff` for formatting and linting
+- **Pre-commit**: Install with `pre-commit install`
+- **Before Push**: Always run `pre-commit run --all-files`
+- **Config**: All Python code must adhere to `app/backend/ruff.toml`
+
+### Testing
+- **Framework**: Use `pytest` for all tests
+- **Coverage**: Aim for 90%+ test coverage
+- **Naming**: Test modules must be named `test_*.py`
+- **Fixtures**: Keep fixtures reusable under `tests/fixtures/`
+- **Integration**: Add integration tests in `tests/backtesting/integration/`
+
+### Error Handling
+- **Specific Exceptions**: Use specific exception types, not bare `except`
+- **Informative Messages**: Provide informative error messages
+- **Custom Exceptions**: Implement custom exception classes when needed
+- **Graceful Handling**: Handle exceptions gracefully
+
+### Logging
+- **Module**: Use the `logging` module judiciously
+- **Events**: Log important events, warnings, and errors
+- **Levels**: Use appropriate log levels (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+
+## Architecture Patterns
+
+### Service Layer Design
+- **OOP Pattern**: All services follow Object-Oriented Programming patterns
+- **Class-based**: Each service is implemented as a class with methods
+- **Composition**: Services can depend on other services through composition
+- **State Management**: Services maintain their own state
+
+### Service Usage Pattern
+```python
+# Instantiate service classes directly
+from app.backend.services.agent_service import AgentService
+from app.backend.services.graph_service import GraphService
+from app.backend.services.portfolio_service import PortfolioService
+
+# Create service instances
+agent_service = AgentService()
+graph_service = GraphService()
+portfolio_service = PortfolioService()
+
+# Use service methods
+agent_function = agent_service.create_agent_function(my_func, "agent_id")
+graph = graph_service.create_graph(nodes, edges)
+portfolio = portfolio_service.create_portfolio(10000, 0.1, ["BTC", "ETH"])
+
+# Async methods use 'a' prefix
+result = await graph_service.arun_graph(graph, portfolio, tickers, start_date, end_date, model_name, model_provider)
+backtest_result = await backtest_service.arun_backtest(progress_callback=callback)
+```
+
+## Performance Optimization
+
+### Asynchronous Programming
+- **I/O Operations**: Use `async` and `await` for I/O-bound operations
+- **Concurrency**: Maximize concurrency with proper async patterns
+- **Resource Management**: Ensure proper release of unused resources
+
+### Caching
+- **Functions**: Use `functools.lru_cache` or `@cache` (Python 3.9+)
+- **FastAPI**: Use `fastapi.Depends` caching where appropriate
+- **Redis**: Use Redis for caching frequently accessed data
+
+### Resource Monitoring
+- **Tool**: Use `psutil` to monitor resource usage
+- **Bottlenecks**: Identify and resolve performance bottlenecks
+- **Memory**: Prevent memory leaks by proper resource cleanup
+
+### Concurrency
+- **Futures**: Use `concurrent.futures` for CPU-bound tasks
+- **Asyncio**: Use `asyncio` for I/O-bound concurrent operations
+- **Threading**: Use threading judiciously for blocking operations
+
+## Database Best Practices
+
+### Schema Design
+- **Efficiency**: Design database schemas efficiently
+- **Indexes**: Use indexes wisely for query optimization
+- **Relationships**: Define proper relationships between entities
+
+### Query Optimization
+- **Performance**: Optimize queries for performance
+- **N+1 Problems**: Avoid N+1 query problems
+- **Connection Pooling**: Use connection pooling appropriately
+
+## API Development with FastAPI
+
+### Data Validation
+- **Pydantic**: Use Pydantic models for request/response validation
+- **Type Safety**: Ensure type safety throughout the API
+
+### Dependency Injection
+- **FastAPI**: Use FastAPI's dependency injection effectively
+- **Services**: Inject services as dependencies
+
+### Routing
+- **RESTful**: Define clear and RESTful API routes
+- **APIRouter**: Use FastAPI's `APIRouter` for route organization
+
+### Background Tasks
+- **FastAPI**: Use FastAPI's `BackgroundTasks` for background processing
+- **Celery**: Integrate with Celery for complex background tasks
+
+### Security
+- **Authentication**: Implement robust authentication (OAuth 2.0, JWT)
+- **Authorization**: Implement proper authorization mechanisms
+- **Input Validation**: Validate all user inputs
+
+### Documentation
+- **OpenAPI**: Use FastAPI's OpenAPI support for auto-generated docs
+- **Examples**: Provide clear examples in API documentation
+
+### Versioning
+- **URL Prefixes**: Plan for API versioning from the start
+- **Headers**: Use headers for versioning when appropriate
+
+### CORS
+- **Configuration**: Configure CORS settings correctly
+- **Security**: Ensure CORS doesn't compromise security
+
+## Environment & Dependencies
+
+### Package Management
+- **Tool**: Use `uv` as the designated Python package manager
+- **Sync**: Run `uv sync --all-groups` to set up the toolchain
+- **Dependencies**: Manage dependencies through `pyproject.toml`
+
+### Environment Files
+- **Location**: Environment files go in `.env`
+- **Example**: Mirror updates in `.env.example`
+- **Secrets**: Never commit secrets to version control
+
+### Python Version
+- **Target**: Prioritize Python 3.11+ for new features
+- **Compatibility**: Ensure compatibility with the target Python version
+
+## Development Workflow
+
+### Pre-commit Hooks
+- **Install**: `pre-commit install`
+- **Run**: `pre-commit run --all-files` before pushing
+- **Tools**: Includes ruff, mypy, and gitleaks
+
+### Testing Workflow
+- **Unit Tests**: Write comprehensive unit tests
+- **Integration Tests**: Add integration tests for complex workflows
+- **Regression Tests**: Add regression tests for new agents or risk models
+- **Failure Paths**: Test failure paths, not just happy flows
+
+### Code Review
+- **Coverage**: Surface expected outputs in PRs
+- **Examples**: Include CLI or UI screenshots when applicable
+- **Documentation**: Call out any config updates in PRs
+- **Reviewers**: Tag reviewers early and highlight follow-up work
+
+## Commit & Pull Request Guidelines
+
+### Commit Messages
+- **Format**: Write concise, present-tense commit subjects (≤72 chars)
+- **Context**: Expand context in the body if needed
+- **Grouping**: Group related changes per commit
+
+### Pull Requests
+- **Summary**: Summarize the change clearly
+- **Config Updates**: Call out any config updates
+- **Issues**: Link to relevant issues
+- **Screenshots**: Include CLI or UI screenshots when applicable
+- **Follow-up**: Highlight follow-up work or known gaps
+
+### Quality Gates
+- **Linting**: Ensure commits are lint-clean
+- **Testing**: Ensure commits are test-clean
+- **Pre-commit**: Run `pre-commit run --all-files` before pushing
+- **Tests**: Run `uv run pytest` before pushing

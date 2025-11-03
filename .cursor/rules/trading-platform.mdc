@@ -1,0 +1,245 @@
+---
+alwaysApply: true
+---
+
+# Trading Platform Rules
+
+## Service Architecture & Object-Oriented Programming
+
+### Service Layer Design
+- **OOP Pattern:** All services in `app/backend/services/` follow Object-Oriented Programming patterns with proper class-based architecture.
+- **Service Classes:** Each service is implemented as a class with methods for specific functionality:
+  - `AgentService`: Manages agent function creation and registration
+  - `GraphService`: Handles trading agent graph creation and execution
+  - `PortfolioService`: Manages portfolio structures and calculations
+  - `OllamaService`: Provides local LLM interaction capabilities
+  - `CryptoBacktestService`: Executes cryptocurrency trading backtests
+  - `BacktestService`: Core backtesting functionality
+  - `ApiKeyService`: Manages API key operations
+
+### Service Usage Pattern
+```python
+# Instantiate service classes directly
+from app.backend.services.agent_service import AgentService
+from app.backend.services.graph_service import GraphService
+from app.backend.services.portfolio_service import PortfolioService
+
+# Create service instances
+agent_service = AgentService()
+graph_service = GraphService()
+portfolio_service = PortfolioService()
+
+# Use service methods
+agent_function = agent_service.create_agent_function(my_func, "agent_id")
+graph = graph_service.create_graph(nodes, edges)
+portfolio = portfolio_service.create_portfolio(10000, 0.1, ["BTC", "ETH"])
+
+# Async methods use 'a' prefix
+result = await graph_service.arun_graph(graph, portfolio, tickers, start_date, end_date, model_name, model_provider)
+backtest_result = await backtest_service.arun_backtest(progress_callback=callback)
+```
+
+### Service Dependencies
+- Services can depend on other services through composition
+- `GraphService` uses `AgentService` internally for agent function creation
+- Services maintain their own state and can be instantiated multiple times if needed
+
+## Crypto Data & LangGraph Tools Integration
+
+### Aster Finance API Integration
+- **Installation:** `uv add git+https://github.com/asterdex/aster-connector-python.git` for Aster Finance API access
+- **API Endpoints:**
+  - Spot API: `https://api.aster.finance` - Spot trading and market data
+  - Futures API: `https://fapi.aster.finance` - Futures trading and derivatives
+  - WebSocket: `wss://stream.aster.finance` - Real-time data streaming
+- **Authentication:** API key + secret key with HMAC SHA256 signature
+- **Free Data:** Aster provides public market data (prices, volumes, order books) without API keys
+- **Location:** Place Aster-based tools in `app/backend/src/tools/aster/` directory
+
+### Aster Service Architecture
+- **AsterMarketDataService:** Real-time price feeds, klines, order book data
+- **AsterTradingService:** Order placement, execution, portfolio management
+- **AsterWebSocketService:** Real-time data streaming and event handling
+- **AsterRiskService:** Position sizing, risk management, margin calculations
+
+### Aster API Integration Patterns
+```python
+# Service instantiation pattern
+from app.backend.services.aster_service import AsterMarketDataService
+
+# Create service with local configuration
+config = AsterConfig(
+    api_key="your_api_key",
+    secret_key="your_secret_key",
+    base_url="https://api.aster.finance"
+)
+aster_service = AsterMarketDataService(config)
+
+# Async method usage with 'a' prefix
+market_data = await aster_service.afetch_klines("BTCUSDT", "1h", 100)
+order_book = await aster_service.afetch_order_book("BTCUSDT", 20)
+```
+
+### Aster Error Handling
+- **RateLimitError:** Handle with exponential backoff (60s, 120s, 240s)
+- **AuthenticationError:** Log and retry with fresh credentials
+- **NetworkError:** Implement retry logic with circuit breaker pattern
+- **OrderError:** Handle insufficient balance, invalid symbols, etc.
+
+### Aster WebSocket Integration
+```python
+# WebSocket service pattern
+class AsterWebSocketService:
+    def __init__(self, config: AsterConfig):
+        self.config = config
+        self.websocket = None
+
+    async def aconnect(self):
+        """Connect to Aster WebSocket stream."""
+        pass
+
+    async def asubscribe_ticker(self, symbol: str):
+        """Subscribe to real-time ticker updates."""
+        pass
+
+    async def asubscribe_depth(self, symbol: str):
+        """Subscribe to order book depth updates."""
+        pass
+```
+
+### LangGraph Custom Tools
+- **Tool Development:** Create custom LangGraph tools for crypto data, news crawling, and web search
+- **News Crawling:** Implement RSS feed readers and web scrapers for crypto sentiment analysis
+- **Web Search:** Integrate search engines for real-time crypto information gathering
+- **Location:** Place custom tools in `src/tools/` directory with clear naming conventions
+
+### Aster Tool Integration Guidelines
+- **Error Handling:** Implement robust error handling for API rate limits and network issues
+- **Caching:** Use Redis for caching frequently accessed crypto data and news content
+- **Async Operations:** Leverage `asyncio` for concurrent data fetching from multiple sources
+- **Testing:** Create comprehensive tests for crypto data tools and news crawling functionality
+- **Rate Limiting:** Implement client-side rate limiting with exponential backoff
+- **WebSocket Management:** Handle connection drops and automatic reconnection
+- **Order Management:** Implement proper order state tracking and error handling
+- **Position Tracking:** Real-time position monitoring with PnL calculations
+
+### Aster Database Schema
+- **aster_api_keys:** Store API credentials with encryption
+- **aster_trades:** Trade execution records with timestamps
+- **aster_positions:** Position tracking with real-time updates
+- **aster_market_data:** Cached market data with TTL
+- **aster_orders:** Order history and status tracking
+- **aster_accounts:** Account balance and margin information
+
+### Aster Configuration Management
+```python
+# config/aster.py
+from pydantic import BaseSettings
+
+class AsterConfig(BaseSettings):
+    api_key: str
+    secret_key: str
+    base_url: str = "https://api.aster.finance"
+    futures_url: str = "https://fapi.aster.finance"
+    websocket_url: str = "wss://stream.aster.finance"
+    rate_limit_per_minute: int = 1200
+    max_retries: int = 3
+    retry_delay: int = 1
+
+    class Config:
+        env_file = ".env"
+```
+
+### Aster Testing Patterns
+```python
+# tests/test_aster_services.py
+import pytest
+from unittest.mock import AsyncMock, patch
+from app.backend.services.aster_service import AsterMarketDataService
+
+class TestAsterMarketDataService:
+    @pytest.fixture
+    def service(self):
+        config = AsterConfig(
+            api_key="test_key",
+            secret_key="test_secret",
+            base_url="https://test.api"
+        )
+        return AsterMarketDataService(config)
+
+    @pytest.mark.asyncio
+    async def test_fetch_klines_success(self, service):
+        with patch('aiohttp.ClientSession.get') as mock_get:
+            mock_response = AsyncMock()
+            mock_response.json.return_value = [{"open": 50000, "close": 51000}]
+            mock_get.return_value.__aenter__.return_value = mock_response
+
+            result = await service.afetch_klines("BTCUSDT", "1h", 1)
+            assert len(result) == 1
+            assert result[0]["open"] == 50000
+
+    @pytest.mark.asyncio
+    async def test_fetch_klines_rate_limit(self, service):
+        with patch('aiohttp.ClientSession.get') as mock_get:
+            mock_response = AsyncMock()
+            mock_response.status = 429
+            mock_response.json.return_value = {"code": -1003, "msg": "Too many requests"}
+            mock_get.return_value.__aenter__.return_value = mock_response
+
+            with pytest.raises(RateLimitError):
+                await service.afetch_klines("BTCUSDT", "1h", 1)
+```
+
+## Build, Test, and Development Commands
+
+**`uv` is the designated Python package manager for this project.**
+
+- `uv sync --all-groups` sets up the Python toolchain; run from the repo root.
+- `uv run python src/main.py --ticker BTCUSDT,ETHUSDT --start-date 2024-01-01` executes the multi-agent CLI with crypto pairs.
+- `uv run python src/backtester.py --ticker BTCUSDT,ETHUSDT` replays historical crypto trades.
+- `uv run uvicorn main:app --reload --app-dir app/backend` runs the API for the web app.
+- `cd app/frontend && pnpm install && pnpm dev` starts the Vite dev server.
+- `uv run pytest` runs all Python tests; use `-k` to target a subset.
+- `uv run pytest tests/test_aster_services.py` runs Aster-specific tests.
+- `uv run python -m app.backend.src.tools.aster.test_connection` tests Aster API connectivity.
+
+## Project Structure & Module Organization
+- `src/` houses the trading graph, agent logic (`agents/`, `graph/`, `tools/`), and CLI entry points (`main.py`, `backtester.py`).
+- `app/backend/` contains the FastAPI service; route definitions live in `routes/`, orchestration in `services/`, and database artifacts under `database/` and `alembic/`. **Alembic migration files should follow the `000x_description.py` naming convention (e.g., `0001_initial_schema.py`).**
+- `app/frontend/` is the Vite + React dashboard (Tailwind config in `tailwind.config.ts`, static assets in `public/`).
+- `tests/` mirrors the Python domains with fixtures in `tests/fixtures/` and scenario suites under `tests/backtesting/integration/`.
+- `docker/` packages runtime images for local or CI builds.
+
+## Testing Guidelines
+- Prefer `pytest` unit coverage alongside integration checks in `tests/backtesting/integration/`.
+- Name test modules `test_*.py` and keep fixtures reusable under `tests/fixtures/`.
+- Add regression tests for new agents or risk models and validate failure paths, not just happy flows.
+- Surface expected outputs in PRs (e.g., `uv run pytest -q`) when requesting review.
+
+## Commit & Pull Request Guidelines
+- Write concise, present-tense commit subjects (≤72 chars) and expand context in the body if needed; group related changes per commit.
+- Ensure commits are lint- and test-clean; run `pre-commit run --all-files` and `uv run pytest` before pushing.
+- PRs should summarize the change, call out any config updates, link issues, and include CLI or UI screenshots when applicable.
+- Tag reviewers early and highlight follow-up work or known gaps in the description.
+
+## Aster Environment Variables
+```bash
+# .env.example
+ASTER_API_KEY=your_aster_api_key_here
+ASTER_SECRET_KEY=your_aster_secret_key_here
+ASTER_BASE_URL=https://api.aster.finance
+ASTER_FUTURES_URL=https://fapi.aster.finance
+ASTER_WEBSOCKET_URL=wss://stream.aster.finance
+ASTER_RATE_LIMIT_PER_MINUTE=1200
+ASTER_MAX_RETRIES=3
+ASTER_RETRY_DELAY=1
+REDIS_URL=redis://localhost:6379
+```
+
+## Aster Deployment Considerations
+- **API Key Rotation:** Implement automated key rotation for production
+- **Rate Limit Monitoring:** Set up alerts for rate limit usage
+- **WebSocket Reconnection:** Handle network interruptions gracefully
+- **Order Safety:** Implement circuit breakers for order placement
+- **Data Backup:** Regular backup of trading data and positions
+- **Monitoring:** Track API response times and error rates

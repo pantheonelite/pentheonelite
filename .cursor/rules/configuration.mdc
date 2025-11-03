@@ -1,0 +1,240 @@
+# Configuration Management Rules
+
+## Critical Configuration Rules
+
+### NEVER DO - Anti-Patterns
+```python
+# ❌ NEVER: Global configuration variables
+_global_config = None
+def get_config():
+    global _global_config
+    if _global_config is None:
+        _global_config = Config()
+    return _global_config
+
+# ❌ NEVER: Function-based imports
+def get_aster_client(config: AsterConfig) -> AsterClient:
+    return AsterClient(config)
+
+# ❌ NEVER: Backward compatibility
+def get_service(use_old=False):
+    if use_old:
+        return OldClient()
+    return NewClient()
+
+# ❌ NEVER: Factory functions
+def create_service():
+    return SomeService()
+
+# ❌ NEVER: Unified config files
+class UnifiedSettings(BaseSettings):
+    # All settings in one file
+    api_settings: ApiSettings
+    database_settings: DatabaseSettings
+    llm_settings: LLMSettings
+    aster_settings: AsterSettings
+    # ... all other settings
+```
+
+### ALWAYS DO - Required Patterns
+```python
+# ✅ ALWAYS: Direct instantiation
+service = AsterDataService()
+client = AsterClient(AsterConfig())
+
+# ✅ ALWAYS: Local configuration
+class MyService:
+    def __init__(self, config: MyConfig):
+        self.config = config
+
+# ✅ ALWAYS: Separate config files for each business domain
+# app/backend/config/api.py
+class ApiSettings(BaseSettings):
+    title: str = "API Title"
+    # ... only API-related settings
+
+# app/backend/config/database.py
+class DatabaseSettings(BaseSettings):
+    url: str
+    # ... only database-related settings
+
+# app/backend/config/llm.py
+class LLMSettings(BaseSettings):
+    openai_api_key: str
+    # ... only LLM-related settings
+
+# app/backend/config/aster.py
+class AsterSettings(BaseSettings):
+    api_key: str
+    # ... only Aster-related settings
+```
+
+## Configuration File Structure
+
+### Required Structure
+```
+app/backend/config/
+├── __init__.py          # Export individual config functions
+├── api.py              # API-specific settings only
+├── database.py         # Database-specific settings only
+├── llm.py              # LLM-specific settings only
+├── aster.py            # Aster-specific settings only
+├── trading.py          # Trading-specific settings only
+├── news.py             # News-specific settings only
+└── security.py         # Security-specific settings only
+```
+
+### Each Config File Must:
+1. **Handle only one business domain**
+2. **Use Pydantic BaseSettings**
+3. **Have proper environment variable prefixes**
+4. **Export a single settings class**
+5. **Include a cached getter function**
+
+### Example Config File Structure
+```python
+# app/backend/config/aster.py
+from functools import lru_cache
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+class AsterSettings(BaseSettings):
+    """Aster trading platform settings."""
+
+    model_config = SettingsConfigDict(env_prefix="ASTER_", case_sensitive=False)
+
+    # API credentials
+    api_key: str | None = None
+    api_secret: str | None = None
+
+    # API endpoints
+    rest_base_url: str = "https://fapi.asterdex.com"
+    websocket_base_url: str = "wss://fstream.asterdex.com"
+
+    # Connection settings
+    timeout: int = 30
+    show_limit_usage: bool = False
+    show_header: bool = False
+
+@lru_cache
+def get_aster_settings() -> AsterSettings:
+    """Get cached Aster settings."""
+    return AsterSettings()
+```
+
+### Config __init__.py Structure
+```python
+# app/backend/config/__init__.py
+from .api import get_api_settings
+from .database import get_database_settings
+from .llm import get_llm_settings
+from .aster import get_aster_settings
+from .trading import get_trading_settings
+from .news import get_news_settings
+from .security import get_security_settings
+
+__all__ = [
+    "get_api_settings",
+    "get_database_settings",
+    "get_llm_settings",
+    "get_aster_settings",
+    "get_trading_settings",
+    "get_news_settings",
+    "get_security_settings",
+]
+```
+
+## Usage Patterns
+
+### In Services
+```python
+# ✅ CORRECT: Import specific config
+from app.backend.config.aster import get_aster_settings
+
+class AsterService:
+    def __init__(self):
+        self.config = get_aster_settings()
+        self.client = AsterClient(self.config)
+```
+
+### In Tools
+```python
+# ✅ CORRECT: Direct instantiation with local config
+class AsterPriceTool(BaseTool):
+    def __init__(self):
+        config = AsterConfig()  # Local config
+        self.client = AsterClient(config)
+```
+
+### In Agents
+```python
+# ✅ CORRECT: Pass config as parameter
+class CryptoAgent:
+    def __init__(self, config: AgentConfig):
+        self.config = config
+        self.llm_config = get_llm_settings()
+```
+
+## Environment Variable Naming
+
+### Prefixes by Domain
+- `API_` - API settings
+- `DATABASE_` - Database settings
+- `LLM_` - LLM settings
+- `ASTER_` - Aster settings
+- `TRADING_` - Trading settings
+- `NEWS_` - News settings
+- `SECURITY_` - Security settings
+
+### Examples
+```bash
+# API settings
+API_TITLE="AI Hedge Fund API"
+API_DEBUG=true
+API_CORS_ORIGINS="http://localhost:5173"
+
+# Database settings
+DATABASE_URL="postgresql+asyncpg://user:pass@localhost:5432/db"
+DATABASE_ECHO=false
+
+# LLM settings
+LLM_OPENAI_API_KEY="sk-..."
+LLM_OPENAI_API_BASE="https://api.openai.com/v1"
+LLM_OPENAI_MODEL="gpt-4-mini"
+
+LLM_ANTHROPIC_API_KEY="sk-ant-..."
+LLM_ANTHROPIC_MODEL="claude-3-sonnet-20240229"
+
+LLM_GROQ_API_KEY="gsk_..."
+LLM_GROQ_MODEL="llama3-8b-8192"
+
+LLM_DEEPSEEK_API_KEY="sk-..."
+LLM_DEEPSEEK_MODEL="deepseek-chat"
+
+LLM_GOOGLE_API_KEY="AIza..."
+LLM_GOOGLE_MODEL="gemini-pro"
+
+LLM_OPENROUTER_API_KEY="sk-or-..."
+LLM_OPENROUTER_MODEL="openai/gpt-4o-mini"
+
+LLM_LITELLM_API_KEY="sk-..."
+LLM_LITELLM_MODEL="gpt-4o-mini"
+LLM_LITELLM_BASE_URL="https://api.openai.com/v1"
+LLM_LITELLM_TIMEOUT=30
+LLM_LITELLM_MAX_TOKENS=4000
+LLM_LITELLM_TEMPERATURE=0.7
+
+# Aster settings
+ASTER_API_KEY="your-aster-key"
+ASTER_API_SECRET="your-aster-secret"
+```
+
+## Enforcement Rules
+
+1. **No Global State**: Never create global configuration variables
+2. **No Factory Functions**: Never create functions to instantiate services
+3. **No Backward Compatibility**: Never maintain old patterns for compatibility
+4. **Separate Domains**: Each business domain gets its own config file
+5. **Direct Instantiation**: Always instantiate services directly with local config
+6. **Cached Getters**: Use `@lru_cache` for config getter functions
+7. **Environment Prefixes**: Use consistent prefixes for environment variables
+8. **Type Safety**: Use Pydantic BaseSettings for all configuration classes

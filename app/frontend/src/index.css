@@ -1,0 +1,766 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&display=swap');
+@import './appkit-overrides.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 0 0% 7%;
+    --surface: 0 0% 100%;
+    --surface-elevated: 210 17% 97.6%;
+    --surface-hover: 200 12% 95.1%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 7%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 7%;
+
+    --primary: 240 100% 50%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 17% 97.6%;
+    --secondary-foreground: 0 0% 7%;
+    --muted: 200 12% 95.1%;
+    --muted-foreground: 0 0% 40%;
+    --accent: 240 100% 50%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 100% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 0 0% 0%;
+    --border-subtle: 0 0% 80%;
+    --status-border: 0 0% 0%;
+    --node: 0 0% 100%;
+    --node-foreground: 0 0% 7%;
+    --node-handle: 0 0% 7%;
+    --node-border: 0 0% 0%;
+    --node-border-hover: 0 0% 20%;
+    --node-border-selected: 240 100% 50%;
+    --input: 0 0% 96%;
+    --ring: 240 100% 50%;
+    --radius: 0.15rem;
+
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 0 0% 7%;
+    --sidebar-primary: 240 100% 50%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 210 17% 97.6%;
+    --sidebar-accent-foreground: 0 0% 7%;
+    --sidebar-border: 0 0% 0%;
+    --sidebar-ring: 240 100% 50%;
+
+    --panel-bg: 210 17% 97.6%;
+    --node-bg: 0 0% 100%;
+
+    --hover-background: rgba(0, 0, 0, 0.08);
+    --hover-foreground: 0 0% 0%;
+    --active-background: rgba(0, 0, 0, 0.16);
+    --active-foreground: 0 0% 0%;
+
+    --ramp-grey-100: #ffffff;
+    --ramp-grey-200: #f1f3f4;
+    --ramp-grey-300: #e4e7eb;
+    --ramp-grey-400: #d0d4d9;
+    --ramp-grey-500: #9aa0a6;
+    --ramp-grey-600: #70757a;
+    --ramp-grey-700: #3c4043;
+    --ramp-grey-800: #1a1a1a;
+    --ramp-grey-900: #141414;
+    --ramp-grey-1000: #0a0a0a;
+
+    --tab-active-text: #000000;
+    --tab-inactive-text: #3c4043;
+    --tab-hover-text: #000000;
+    --tab-background: #ffffff;
+    --tab-hover-background: #f1f3f4;
+    --tab-border: #000000;
+    --tab-accent: #0000ff;
+    --tab-icon-active: #0000ff;
+    --tab-icon-inactive: #3c4043;
+    --tab-close-hover: #e4e7eb;
+
+    --terminal-green: #00aa00;
+    --terminal-red: #cc0000;
+    --terminal-yellow: #b8860b;
+    --terminal-blue: #0000aa;
+
+    --chart-1: 120 100% 33.3%;
+    --chart-2: 240 100% 50%;
+    --chart-3: 258 89% 66%;
+    --chart-4: 40 100% 50%;
+    --chart-5: 0 100% 50%;
+
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.15);
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.2), 0 2px 4px -2px rgb(0 0 0 / 0.2);
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.25), 0 4px 6px -4px rgb(0 0 0 / 0.25);
+    --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.3), 0 8px 10px -6px rgb(0 0 0 / 0.3);
+
+    font-family: 'IBM Plex Mono', monospace;
+    line-height: 1.45;
+    font-weight: 400;
+    letter-spacing: -0.01em;
+  }
+
+  .dark {
+    --background: 240 63% 5%;
+    --foreground: 210 17% 95%;
+    --surface: 240 45% 10%;
+    --surface-elevated: 240 40% 15%;
+    --surface-hover: 240 35% 20%;
+
+    /* Pantheon Elite Design System */
+    --pantheon-primary-500: 258 90% 66%;
+    --pantheon-primary-600: 258 90% 56%;
+    --pantheon-primary-300: 258 90% 76%;
+    --pantheon-secondary-500: 153 47% 49%;
+    --pantheon-secondary-600: 153 60% 39%;
+    --pantheon-secondary-300: 153 47% 64%;
+    --pantheon-accent-orange: 17 88% 52%;
+    --pantheon-accent-red: 0 72% 51%;
+    --pantheon-accent-blue: 217 91% 60%;
+    --pantheon-cosmic-bg: 240 63% 5%;
+    --pantheon-cosmic-surface: 240 45% 10%;
+    --pantheon-text-primary: 210 17% 95%;
+    --pantheon-text-secondary: 215 16% 65%;
+    --pantheon-border: 240 30% 18%;
+    --pantheon-shadow: 258 90% 66% / 0.2;
+
+    --card: 0 0% 3.9%;
+    --card-foreground: 120 100% 50%;
+    --popover: 0 0% 3.9%;
+    --popover-foreground: 120 100% 50%;
+
+    --primary: 120 100% 50%;
+    --primary-foreground: 0 0% 0%;
+    --secondary: 0 0% 6.7%;
+    --secondary-foreground: 120 100% 50%;
+    --muted: 0 0% 10.2%;
+    --muted-foreground: 120 100% 40%;
+    --accent: 180 100% 50%;
+    --accent-foreground: 0 0% 0%;
+    --destructive: 0 100% 50%;
+    --destructive-foreground: 0 0% 0%;
+
+    --border: 0 0% 89.8%;
+    --border-subtle: 0 0% 63.9%;
+    --status-border: 0 0% 89.8%;
+    --node: 0 0% 6.7%;
+    --node-foreground: 120 100% 50%;
+    --node-handle: 120 100% 50%;
+    --node-border: 0 0% 63.9%;
+    --node-border-hover: 0 0% 89.8%;
+    --node-border-selected: 180 100% 50%;
+    --input: 0 0% 6.7%;
+    --ring: 180 100% 50%;
+
+    --sidebar-background: 0 0% 3.9%;
+    --sidebar-foreground: 120 100% 50%;
+    --sidebar-primary: 180 100% 50%;
+    --sidebar-primary-foreground: 0 0% 0%;
+    --sidebar-accent: 0 0% 6.7%;
+    --sidebar-accent-foreground: 120 100% 50%;
+    --sidebar-border: 0 0% 63.9%;
+    --sidebar-ring: 180 100% 50%;
+
+    --panel-bg: 0 0% 6.7%;
+    --node-bg: 0 0% 6.7%;
+
+    --hover-background: rgba(0, 255, 0, 0.12);
+    --hover-foreground: 120 100% 60%;
+    --active-background: rgba(0, 255, 0, 0.2);
+    --active-foreground: 120 100% 70%;
+
+    --tab-active-text: #00ff00;
+    --tab-inactive-text: #00cc00;
+    --tab-hover-text: #00ff00;
+    --tab-background: #0a0a0a;
+    --tab-hover-background: #111111;
+    --tab-border: #e5e5e5;
+    --tab-accent: #00ffff;
+    --tab-icon-active: #00ffff;
+    --tab-icon-inactive: #00cc00;
+    --tab-close-hover: #1a1a1a;
+
+    --terminal-green: #00ff00;
+    --terminal-red: #ff0000;
+    --terminal-yellow: #ffff00;
+    --terminal-blue: #00ffff;
+
+    --chart-1: 120 100% 50%;
+    --chart-2: 180 100% 50%;
+    --chart-3: 300 100% 50%;
+    --chart-4: 32 100% 50%;
+    --chart-5: 0 100% 50%;
+
+    --shadow-sm: 0 1px 2px 0 rgb(0 255 0 / 0.25);
+    --shadow-md: 0 4px 6px -1px rgb(0 255 0 / 0.4), 0 2px 4px -2px rgb(0 255 0 / 0.35);
+    --shadow-lg: 0 10px 15px -3px rgb(0 255 0 / 0.45), 0 4px 6px -4px rgb(0 255 0 / 0.4);
+    --shadow-xl: 0 20px 25px -5px rgb(0 255 0 / 0.5), 0 8px 10px -6px rgb(0 255 0 / 0.4);
+  }
+}
+
+@layer components {
+  .terminal-text {
+    font-family: 'IBM Plex Mono', monospace;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+
+  .terminal-header {
+    font-family: 'IBM Plex Mono', monospace;
+    font-variant-numeric: tabular-nums;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.28em;
+    font-weight: 600;
+    color: hsl(var(--foreground));
+  }
+
+  .terminal-data {
+    font-family: 'IBM Plex Mono', monospace;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    font-weight: 500;
+    color: hsl(var(--foreground));
+  }
+
+  .terminal-positive {
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--terminal-green);
+    font-weight: 600;
+  }
+
+  .terminal-negative {
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--terminal-red);
+    font-weight: 600;
+  }
+
+  .terminal-warning {
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--terminal-yellow);
+    font-weight: 600;
+  }
+
+  .terminal-blue {
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--terminal-blue);
+    font-weight: 600;
+  }
+
+  .terminal-border {
+    border: 2px solid hsl(var(--border));
+    background-color: hsl(var(--surface));
+  }
+
+  .terminal-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    font-family: 'IBM Plex Mono', monospace;
+    font-variant-numeric: tabular-nums;
+    text-transform: uppercase;
+    font-size: 0.625rem;
+    letter-spacing: 0.32em;
+    font-weight: 600;
+    padding: 0.5rem 0.75rem;
+    background-color: hsl(var(--surface));
+    color: hsl(var(--foreground));
+    border: 2px solid hsl(var(--border));
+    box-shadow: var(--shadow-sm);
+    transition: transform 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+  }
+
+  .terminal-button:hover {
+    transform: translateY(-1px);
+    background-color: hsl(var(--surface-hover));
+    box-shadow: var(--shadow-md);
+  }
+
+  .terminal-button:active {
+    transform: translateY(0);
+    box-shadow: none;
+    background-color: var(--active-background);
+  }
+}
+
+@layer utilities {
+  .bg-node {
+    background-color: hsl(var(--node-bg));
+  }
+
+  .border-status {
+    border-color: hsl(var(--status-border));
+  }
+
+  .border-node {
+    border-color: hsl(var(--node-border));
+  }
+
+  .border-node-hover {
+    border-color: hsl(var(--node-border-hover));
+  }
+
+  .border-node-selected {
+    border-color: hsl(var(--node-border-selected));
+  }
+
+  .hover-bg {
+    @apply hover:bg-[var(--hover-background)];
+  }
+
+  .hover-text {
+    @apply hover:text-[hsl(var(--hover-foreground))];
+  }
+
+  .hover-item {
+    @apply hover:bg-[var(--hover-background)] hover:text-[hsl(var(--hover-foreground))];
+  }
+
+  .active-bg {
+    @apply bg-[var(--active-background)];
+  }
+
+  .active-text {
+    @apply text-[hsl(var(--active-foreground))];
+  }
+
+  .active-item {
+    @apply bg-[var(--active-background)] text-[hsl(var(--active-foreground))];
+  }
+
+  /* Pantheon Elite utilities */
+  .pantheon-primary {
+    color: hsl(var(--pantheon-primary-500));
+  }
+
+  .pantheon-bg-cosmic {
+    background-color: hsl(var(--pantheon-cosmic-bg));
+  }
+
+  .pantheon-bg-surface {
+    background-color: hsl(var(--pantheon-cosmic-surface));
+  }
+
+  .pantheon-text-glow {
+    text-shadow: 0 0 10px hsl(var(--pantheon-primary-300));
+  }
+
+  .pantheon-border {
+    border-color: hsl(var(--pantheon-border));
+  }
+
+  .pantheon-shadow-glow {
+    box-shadow: 0 0 20px hsl(var(--pantheon-shadow));
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'IBM Plex Mono', monospace;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+  }
+
+  @font-face {
+    font-family: "geist";
+    font-style: normal;
+    font-weight: 100 900;
+    src: url(/fonts/geist.woff2) format("woff2");
+  }
+
+  @font-face {
+    font-family: "geist-mono";
+    font-style: normal;
+    font-weight: 100 900;
+    src: url(/fonts/geist-mono.woff2) format("woff2");
+  }
+}
+
+.skeleton {
+  * {
+    pointer-events: none !important;
+  }
+
+  *[class^="text-"] {
+    color: transparent;
+    @apply rounded-md bg-foreground/20 select-none animate-pulse;
+  }
+
+  .skeleton-bg {
+    @apply bg-foreground/10;
+  }
+
+  .skeleton-div {
+    @apply bg-foreground/20 animate-pulse;
+  }
+}
+
+.ProseMirror {
+  outline: none;
+}
+
+.cm-editor,
+.cm-gutters {
+  @apply bg-background dark:bg-zinc-800 outline-none selection:bg-zinc-900 !important;
+}
+
+.ͼo.cm-focused>.cm-scroller>.cm-selectionLayer .cm-selectionBackground,
+.ͼo.cm-selectionBackground,
+.ͼo.cm-content::selection {
+  @apply bg-zinc-200 dark:bg-zinc-900 !important;
+}
+
+.cm-activeLine,
+.cm-activeLineGutter {
+  @apply bg-transparent !important;
+}
+
+.cm-activeLine {
+  @apply rounded-r-sm !important;
+}
+
+.cm-lineNumbers {
+  @apply min-w-7;
+}
+
+.cm-foldGutter {
+  @apply min-w-3;
+}
+
+.cm-lineNumbers .cm-activeLineGutter {
+  @apply rounded-l-sm !important;
+}
+
+.suggestion-highlight {
+  @apply bg-blue-200 hover:bg-blue-300 dark:hover:bg-blue-400/50 dark:text-blue-50 dark:bg-blue-500/40;
+}
+
+/* Animated border for in-progress agent nodes */
+.node-in-progress {
+  position: relative;
+  border: none !important;
+}
+
+.animated-border-container {
+  position: absolute;
+  top: -1px;
+  left: -1px;
+  right: -1px;
+  bottom: -1px;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.animated-border-container::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 0.5rem;
+  background: linear-gradient(90deg,
+    #2383F4, #5e61e7, #8F00FF, #7831d4, #2383F4
+  );
+  background-size: 200% 100%;
+  animation: gradientFlow 3s linear infinite;
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  padding: 3px;
+}
+
+@keyframes gradientFlow {
+  0% {
+    background-position: 0% 0%;
+  }
+  100% {
+    background-position: 200% 0%;
+  }
+}
+
+/* Gradient animation for in-progress elements */
+.gradient-animation {
+  background: linear-gradient(90deg,
+    #2383F4, #5e61e7, #8F00FF, #7831d4, #2383F4
+  );
+  background-size: 200% 100%;
+  animation: gradientFlow 3s linear infinite;
+}
+
+/* Gradient text animation */
+.gradient-text {
+  background: linear-gradient(90deg,
+    #2383F4, #5e61e7, #8F00FF, #7831d4, #2383F4
+  );
+  background-size: 200% 100%;
+  animation: gradientFlow 3s linear infinite;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+}
+
+/* Remove white lines between ReactFlow Controls buttons */
+.react-flow__controls .react-flow__controls-button {
+  border-right: none !important;
+}
+
+.react-flow__controls .react-flow__controls-button + .react-flow__controls-button {
+  border-left: none !important;
+}
+
+/* Pantheon Elite animations */
+/* Optimized animations using transform and opacity only for GPU acceleration */
+@keyframes pulseGlow {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+
+@keyframes cosmicFloat {
+  0%, 100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -10px, 0);
+  }
+}
+
+@keyframes starTwinkle {
+  0%, 100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes slowRotate {
+  0% {
+    transform: rotate3d(0, 0, 1, 0deg);
+  }
+  100% {
+    transform: rotate3d(0, 0, 1, 360deg);
+  }
+}
+
+@keyframes scalePulse {
+  0%, 100% {
+    transform: scale3d(1, 1, 1);
+  }
+  50% {
+    transform: scale3d(1.1, 1.1, 1);
+  }
+}
+
+@keyframes driftRight {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(50px, 0, 0);
+  }
+}
+
+@keyframes driftLeft {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(-50px, 0, 0);
+  }
+}
+
+@keyframes driftUp {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(0, -30px, 0);
+  }
+}
+
+@keyframes diagonalFloat {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) rotate3d(0, 0, 1, 0deg);
+  }
+  25% {
+    transform: translate3d(20px, -20px, 0) rotate3d(0, 0, 1, 90deg);
+  }
+  50% {
+    transform: translate3d(-20px, -40px, 0) rotate3d(0, 0, 1, 180deg);
+  }
+  75% {
+    transform: translate3d(-20px, -20px, 0) rotate3d(0, 0, 1, 270deg);
+  }
+}
+
+@keyframes orbit {
+  0% {
+    transform: rotate3d(0, 0, 1, 0deg) translate3d(100px, 0, 0) rotate3d(0, 0, 1, 0deg);
+  }
+  100% {
+    transform: rotate3d(0, 0, 1, 360deg) translate3d(100px, 0, 0) rotate3d(0, 0, 1, -360deg);
+  }
+}
+
+@keyframes orbitLarge {
+  0% {
+    transform: rotate3d(0, 0, 1, 0deg) translate3d(150px, 0, 0) rotate3d(0, 0, 1, 0deg);
+  }
+  100% {
+    transform: rotate3d(0, 0, 1, 360deg) translate3d(150px, 0, 0) rotate3d(0, 0, 1, -360deg);
+  }
+}
+
+@keyframes orbitXL {
+  0% {
+    transform: rotate3d(0, 0, 1, 0deg) translate3d(200px, 0, 0) rotate3d(0, 0, 1, 0deg);
+  }
+  100% {
+    transform: rotate3d(0, 0, 1, 360deg) translate3d(200px, 0, 0) rotate3d(0, 0, 1, -360deg);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* Optimized animation classes with GPU acceleration hints */
+.animate-pulse-glow {
+  animation: pulseGlow 3s ease-in-out infinite;
+  will-change: opacity;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.animate-cosmic-float {
+  animation: cosmicFloat 4s ease-in-out infinite;
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.animate-star-twinkle {
+  animation: starTwinkle 2s ease-in-out infinite;
+  will-change: opacity;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.animate-slow-rotate {
+  animation: slowRotate 20s linear infinite;
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.animate-scale-pulse {
+  animation: scalePulse 3s ease-in-out infinite;
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.animate-drift-right {
+  animation: driftRight 8s ease-in-out infinite alternate;
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.animate-drift-left {
+  animation: driftLeft 8s ease-in-out infinite alternate;
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.animate-drift-up {
+  animation: driftUp 6s ease-in-out infinite alternate;
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.animate-diagonal-float {
+  animation: diagonalFloat 15s ease-in-out infinite;
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.animate-orbit {
+  animation: orbit 25s linear infinite;
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.animate-orbit-large {
+  animation: orbitLarge 30s linear infinite;
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.animate-orbit-xl {
+  animation: orbitXL 40s linear infinite;
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+/* Respect reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse-glow,
+  .animate-cosmic-float,
+  .animate-star-twinkle,
+  .animate-slow-rotate,
+  .animate-scale-pulse,
+  .animate-drift-right,
+  .animate-drift-left,
+  .animate-drift-up,
+  .animate-diagonal-float,
+  .animate-orbit,
+  .animate-orbit-large,
+  .animate-orbit-xl {
+    animation: none !important;
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 3s linear infinite;
+  background-size: 200% 100%;
+}
