@@ -353,7 +353,7 @@ class DebateService:
             confidence = confidence / 100.0
 
         # Map signal to standardized action and direction
-        # Support: BUY/SELL/HOLD, LONG/SHORT, STRONG_BUY/STRONG_SELL
+        # Support: BUY/SELL/HOLD/CLOSE, LONG/SHORT, STRONG_BUY/STRONG_SELL
         action_map = {
             # Standard buy/sell signals
             "BUY": ("buy", "LONG"),
@@ -365,6 +365,8 @@ class DebateService:
             # Futures-specific signals
             "LONG": ("buy", "LONG"),
             "SHORT": ("sell", "SHORT"),
+            # Position closing signal
+            "CLOSE": ("close", "CLOSE"),
         }
 
         # Get action and default direction from mapping
@@ -379,6 +381,7 @@ class DebateService:
             "LONG": "bullish",
             "SHORT": "bearish",
             "NONE": "neutral",
+            "CLOSE": "neutral",
         }
         sentiment = sentiment_map.get(direction, "neutral")
 
@@ -475,17 +478,24 @@ class DebateService:
                 continue
 
             # Count votes for this symbol using direction (more accurate for futures)
-            votes = {"long": 0, "short": 0, "hold": 0}
+            votes = {"long": 0, "short": 0, "hold": 0, "close": 0}
             agent_votes = {}
             total_confidence = 0.0
 
             for agent_id, signal in agents_dict.items():
-                # Use direction field (LONG/SHORT/NONE) for futures trading
+                # Use direction field (LONG/SHORT/NONE/CLOSE) for futures trading
                 direction = signal.get("direction", "").upper()
+                action = signal.get("action", "hold").lower()
+
+                # Handle CLOSE action explicitly
+                if action == "close" or direction == "CLOSE":
+                    votes["close"] += 1
+                    agent_votes[agent_id] = "CLOSE"
+                    total_confidence += signal.get("confidence", 0.5)
+                    continue
 
                 # Fallback to action if direction not available
                 if not direction or direction == "NONE":
-                    action = signal.get("action", "hold").lower()
                     if action == "buy":
                         direction = "LONG"
                     elif action == "sell":
@@ -508,7 +518,7 @@ class DebateService:
 
                 total_confidence += confidence
 
-            # Determine majority for this symbol based on LONG/SHORT votes
+            # Determine majority for this symbol based on LONG/SHORT/CLOSE votes
             total_votes = sum(votes.values())
             decision = "HOLD"
             direction = "NONE"
@@ -516,8 +526,13 @@ class DebateService:
             if total_votes > 0:
                 long_ratio = votes["long"] / total_votes
                 short_ratio = votes["short"] / total_votes
+                close_ratio = votes["close"] / total_votes
 
-                if long_ratio >= threshold:
+                # CLOSE takes priority if majority votes to exit
+                if close_ratio >= threshold:
+                    decision = "CLOSE"
+                    direction = "CLOSE"
+                elif long_ratio >= threshold:
                     decision = "BUY"
                     direction = "LONG"
                 elif short_ratio >= threshold:
@@ -535,7 +550,7 @@ class DebateService:
                 agent_name="System",
                 message=(
                     f"Consensus for {symbol}: {decision} ({direction}). "
-                    f"Votes: {votes['long']} LONG, {votes['short']} SHORT, {votes['hold']} HOLD. "
+                    f"Votes: L={votes['long']}, S={votes['short']}, H={votes['hold']}, C={votes['close']}. "
                     f"Confidence: {avg_confidence:.2%}"
                 ),
                 message_type="consensus",
@@ -548,9 +563,8 @@ class DebateService:
             # Store consensus decision record for this symbol
             reasoning = (
                 f"Consensus reached for {symbol} with {decision} ({direction}) decision. "
-                f"Agent votes: {votes['long']} LONG, {votes['short']} SHORT, {votes['hold']} HOLD. "
-                f"Average confidence: {avg_confidence:.2%}. "
-                f"Threshold: {threshold:.0%}"
+                f"Agent votes: L={votes['long']}, S={votes['short']}, H={votes['hold']}, C={votes['close']}. "
+                f"Avg confidence: {avg_confidence:.2%}. Threshold: {threshold:.0%}"
             )
 
             consensus_record = await self.repo.create_consensus_decision(

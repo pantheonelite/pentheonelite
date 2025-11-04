@@ -81,6 +81,12 @@ class PortfolioContextService:
                     "liquidation_price": float(pos.liquidation_price) if pos.liquidation_price else None,
                     "margin_used": float(margin_used),
                     "opened_at": pos.opened_at.isoformat() if pos.opened_at else None,
+                    # Exit plan information
+                    "stop_loss_price": float(pos.stop_loss_price) if pos.stop_loss_price else None,
+                    "take_profit_short": float(pos.take_profit_short) if pos.take_profit_short else None,
+                    "take_profit_mid": float(pos.take_profit_mid) if pos.take_profit_mid else None,
+                    "take_profit_long": float(pos.take_profit_long) if pos.take_profit_long else None,
+                    "has_exit_plan": bool(pos.stop_loss_price or pos.take_profit_short),
                 }
 
                 total_notional += notional
@@ -115,6 +121,9 @@ class PortfolioContextService:
                 total_value=float(total_value),
                 unrealized_pnl=float(total_unrealized_pnl),
             )
+
+            return portfolio_context
+
         except Exception as e:
             logger.exception("Failed to build portfolio context", council_id=council.id, error=str(e))
             # Return minimal portfolio context on error
@@ -130,8 +139,6 @@ class PortfolioContextService:
                 "margin_usage_ratio": 0.0,
                 "liquidation_risk": "unknown",
             }
-        else:
-            return portfolio_context
 
     def _normalize_position_side(self, position) -> str:
         """

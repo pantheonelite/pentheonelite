@@ -142,13 +142,14 @@ Focus on projects that push blockchain technology forward."""
             if hasattr(price_data, "price"):
                 # PriceData object - access attributes directly
                 current_price = price_data.price
+                volume_24h = price_data.volume
                 change_percent_24h = price_data.change_percent_24h
                 high_24h = price_data.high_24h
                 low_24h = price_data.low_24h
             else:
                 # Dictionary - use get method
                 current_price = price_data.get("price", 0)
-                price_data.get("volume", 0)
+                volume_24h = price_data.get("volume", 0)
                 change_percent_24h = price_data.get("change_percent_24h", 0)
                 high_24h = price_data.get("high_24h", 0)
                 low_24h = price_data.get("low_24h", 0)

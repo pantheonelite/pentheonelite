@@ -20,7 +20,6 @@ def call_llm_with_retry(
     state: CryptoAgentState | None = None,
     max_retries: int = 3,
     default_factory=None,
-    *,
     use_structured_output: bool = False,
     **kwargs: Any,
 ) -> BaseModel:
@@ -80,7 +79,7 @@ def call_llm_with_retry(
     manager = create_llm_manager()
 
     try:
-        logger.info("Calling LLM", agent_name=agent_name, model_name=model_name, model_provider=model_provider)
+        logger.info(f"Calling LLM for agent {agent_name}", model_name=model_name, model_provider=model_provider)
         result = manager.call_llm(
             prompt=prompt,
             model=model_name,
@@ -99,69 +98,6 @@ def call_llm_with_retry(
         return create_default_response(pydantic_model)
 
 
-def _unwrap_annotated(annotation: Any) -> Any:
-    """Unwrap typing.Annotated to its inner type if present."""
-    if hasattr(annotation, "__origin__") and annotation.__origin__ is typing.Annotated:
-        return annotation.__args__[0]
-    return annotation
-
-
-def _resolve_union(annotation: Any) -> tuple[Any, Any | None]:
-    """Resolve Union/Optional and return (resolved_type, default_if_none)."""
-    origin = typing.get_origin(annotation)
-    if origin is typing.Union:
-        args = typing.get_args(annotation)
-        non_none_types = [arg for arg in args if arg is not type(None)]
-        if non_none_types:
-            return non_none_types[0], None
-        return annotation, None
-    return annotation, None
-
-
-def _default_for_literal(field_name: str, annotation: Any) -> Any:
-    """Return default value for Literal types based on the first literal value."""
-    first_value = typing.get_args(annotation)[0]
-    if field_name in ["signal", "action"] and isinstance(first_value, str):
-        return first_value.lower()
-    if field_name in ["recommendation", "sentiment"] and isinstance(first_value, str):
-        return first_value.upper()
-    return first_value
-
-
-def _default_for_basic_type(field_name: str, type_obj: type) -> Any:
-    """Return default value for simple builtin types."""
-    value: Any = None
-    if type_obj is str:
-        if "signal" in field_name or "action" in field_name:
-            value = "hold"
-        elif "reasoning" in field_name:
-            value = "Error in analysis, using default"
-        elif "risk_level" in field_name or "risk" in field_name:
-            value = "medium"
-        else:
-            value = "Unknown"
-    elif type_obj is float:
-        value = 0.0
-    elif type_obj is int:
-        value = 0
-    elif type_obj is bool:
-        value = False
-    return value
-
-
-def _default_for_origin(origin: Any) -> Any:
-    """Return default value for generic container origins."""
-    if origin is list:
-        return []
-    if origin is dict:
-        return {}
-    if origin is tuple:
-        return ()
-    if origin is set:
-        return set()
-    return None
-
-
 def create_default_response(model_class: type[BaseModel]) -> BaseModel:
     """
     Creates a safe default response based on the model's fields.
@@ -176,27 +112,74 @@ def create_default_response(model_class: type[BaseModel]) -> BaseModel:
     BaseModel
         Default response instance
     """
-    default_values: dict[str, Any] = {}
+    default_values = {}
     for field_name, field in model_class.model_fields.items():
-        annotation = _unwrap_annotated(field.annotation)
+        annotation = field.annotation
 
-        # Resolve Optional/Union
-        annotation, _ = _resolve_union(annotation)
+        # Handle Annotated types (extract the inner type)
+        if hasattr(annotation, "__origin__") and annotation.__origin__ is typing.Annotated:
+            inner_type = annotation.__args__[0]
+            annotation = inner_type
+
+        # Handle Union types (Optional[X] is Union[X, None])
         origin = typing.get_origin(annotation)
+        if origin is typing.Union:
+            # Get the first non-None type
+            args = typing.get_args(annotation)
+            non_none_types = [arg for arg in args if arg is not type(None)]
+            if non_none_types:
+                annotation = non_none_types[0]
+                # Re-get origin/args after extraction
+                origin = typing.get_origin(annotation)
+            else:
+                default_values[field_name] = None
+                continue
 
-        # Literal
+        # Handle Literal types first (before basic types)
         if origin is typing.Literal:
-            default_values[field_name] = _default_for_literal(field_name, annotation)
+            first_value = typing.get_args(annotation)[0]
+            # Normalize signal values to lowercase for models expecting lowercase
+            if field_name in ["signal", "action"] and isinstance(first_value, str):
+                default_values[field_name] = first_value.lower()
+            elif field_name in ["recommendation", "sentiment"] and isinstance(first_value, str):
+                default_values[field_name] = first_value.upper()
+            else:
+                default_values[field_name] = first_value
             continue
 
-        # Basic builtin types
+        # Handle basic types
         if isinstance(annotation, type):
-            default_values[field_name] = _default_for_basic_type(field_name, annotation)
+            if annotation is str:
+                if "signal" in field_name or "action" in field_name:
+                    default_values[field_name] = "hold"
+                elif "reasoning" in field_name:
+                    default_values[field_name] = "Error in analysis, using default"
+                elif "risk_level" in field_name or "risk" in field_name:
+                    default_values[field_name] = "medium"
+                else:
+                    default_values[field_name] = "Unknown"
+            elif annotation is float:
+                default_values[field_name] = 0.0
+            elif annotation is int:
+                default_values[field_name] = 0
+            elif annotation is bool:
+                default_values[field_name] = False
+            else:
+                default_values[field_name] = None
             continue
 
-        # Generic containers
-        container_default = _default_for_origin(origin)
-        default_values[field_name] = container_default
+        # Handle generic types (list, dict, etc.)
+        if origin is list:
+            default_values[field_name] = []
+        elif origin is dict:
+            default_values[field_name] = {}
+        elif origin is tuple:
+            default_values[field_name] = ()
+        elif origin is set:
+            default_values[field_name] = set()
+        else:
+            # Final fallback - use None for optional fields
+            default_values[field_name] = None
 
     return model_class(**default_values)
 

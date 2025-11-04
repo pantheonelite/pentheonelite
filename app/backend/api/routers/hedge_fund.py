@@ -183,7 +183,7 @@ async def run(request_data: HedgeFundRequest, request: Request, uow: UnitOfWorkD
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"An error occurred while processing the request: {e!s}") from e
+        raise HTTPException(status_code=500, detail=f"An error occurred while processing the request: {e!s}")
 
 
 @router.post(
@@ -246,13 +246,10 @@ async def backtest(request_data: BacktestRequest, request: Request, uow: UnitOfW
             # Progress callback to handle backtest-specific updates
             def progress_callback(update):
                 if update["type"] == "progress":
-                    current_date = update["current_date"]
-                    current_step = update["current_step"]
-                    total_dates = update["total_dates"]
                     event = ProgressUpdateEvent(
                         agent="backtest",
                         ticker=None,
-                        status=f"Processing {current_date} ({current_step}/{total_dates})",
+                        status=f"Processing {update['current_date']} ({update['current_step']}/{update['total_dates']})",
                         timestamp=None,
                         analysis=None,
                     )
@@ -266,11 +263,10 @@ async def backtest(request_data: BacktestRequest, request: Request, uow: UnitOfW
 
                     analysis_data = json.dumps(update["data"])
 
-                    portfolio_value = backtest_result.portfolio_value
                     event = ProgressUpdateEvent(
                         agent="backtest",
                         ticker=None,
-                        status=f"Completed {backtest_result.date} - Portfolio: ${portfolio_value:,.2f}",
+                        status=f"Completed {backtest_result.date} - Portfolio: ${backtest_result.portfolio_value:,.2f}",
                         timestamp=None,
                         analysis=analysis_data,
                     )
@@ -354,9 +350,7 @@ async def backtest(request_data: BacktestRequest, request: Request, uow: UnitOfW
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"An error occurred while processing the backtest request: {e!s}"
-        ) from e
+        raise HTTPException(status_code=500, detail=f"An error occurred while processing the backtest request: {e!s}")
 
 
 @router.get(

@@ -11,7 +11,7 @@ This agent focuses on:
 """
 
 import json
-from typing import Any
+from typing import Any, Literal
 
 import structlog
 from app.backend.src.agents.base_agent import BaseCryptoAgent
@@ -27,7 +27,7 @@ logger = structlog.get_logger(__name__)
 class TechnicalAnalysis(BaseModel):
     """Analysis output from Crypto Technical Agent for FUTURES trading."""
 
-    recommendation: str  # "LONG", "SHORT", "HOLD" (for futures positions)
+    recommendation: Literal["LONG", "SHORT", "HOLD", "CLOSE"]
     confidence: float  # 0.0 to 1.0
     reasoning: str
     technical_score: float  # 0.0 to 1.0
@@ -374,7 +374,7 @@ Your analysis should include:
                 technical_summary = "Technical indicators unavailable: unexpected data format"
 
         except json.JSONDecodeError as e:
-            logger.exception(f"Failed to parse technical data JSON for {symbol}: {e!s}")
+            logger.error(f"Failed to parse technical data JSON for {symbol}: {e!s}")
             logger.debug(f"Raw technical data (first 500 chars): {technical_data_str[:500]}")
             technical_summary = "Technical indicators unavailable: invalid JSON response"
         except Exception as e:
@@ -430,9 +430,9 @@ Your analysis should include:
 
         Provide your FUTURES analysis in the following JSON format:
         {{
-            "recommendation": "LONG|SHORT|HOLD",
+            "recommendation": "LONG|SHORT|HOLD|CLOSE",
             "confidence": 0.0-1.0,
-            "reasoning": "Detailed explanation: WHY LONG or SHORT, based on technical indicators",
+            "reasoning": "Detailed explanation: WHY LONG/SHORT/HOLD/CLOSE based on technical indicators",
             "technical_score": 0.0-1.0,
             "on_chain_health": 0.0-1.0,
             "trading_volume": 0.0-1.0,
@@ -475,6 +475,20 @@ Your analysis should include:
         - Stochastic in dead neutral zone (45-55) AND
         - OBV flat with no trend
 
+        📍 CLOSE RECOMMENDATION (Exit existing position):
+        Use CLOSE when portfolio shows existing position and:
+        - Price hit resistance/support AND losing momentum
+        - Indicators showing reversal but not strong enough for opposite position
+        - RSI overbought (>70) or oversold (<30) with divergence
+        - MACD crossover against position direction
+        - Bollinger Bands squeeze suggesting breakout uncertainty
+        - Volume declining (OBV flat or decreasing)
+
+        Example CLOSE scenarios:
+        - Have LONG position, RSI at 72 (overbought), MACD turning negative → CLOSE
+        - Have SHORT position, price at strong support, bullish divergence → CLOSE
+        - Position profitable (+5%+), indicators turning neutral → CLOSE (take profit)
+
         💪 CONFIDENCE GUIDELINES (Be confident!):
         - 0.70-1.0: Strong signal (3+ indicators align)
         - 0.50-0.69: Moderate signal (2 indicators align)
@@ -500,6 +514,31 @@ Your analysis should include:
         Cite specific values (e.g., "RSI at 45 shows neutral momentum, slight LONG bias as not overbought").
         Be DECISIVE, data-driven, and ALWAYS consider liquidation risk with leverage.
         YOUR JOB IS TO FIND TRADING OPPORTUNITIES, NOT TO AVOID THEM!
+
+        CRITICAL: You MUST respond with valid JSON matching this exact structure:
+        {{
+            "recommendation": "LONG" | "SHORT" | "HOLD" | "CLOSE",
+            "confidence": 0.0-1.0,
+            "reasoning": "string explaining your analysis",
+            "technical_score": 0.0-1.0,
+            "on_chain_health": 0.0-1.0,
+            "trading_volume": 0.0-1.0,
+            "market_structure": 0.0-1.0,
+            "risk_metrics": 0.0-1.0,
+            "momentum": 0.0-1.0,
+            "risk_assessment": "string",
+            "key_insights": ["string", "string"],
+            "suggested_leverage": number or null,
+            "liquidation_risk": "LOW" | "MEDIUM" | "HIGH" or null,
+            "funding_rate_impact": "POSITIVE" | "NEUTRAL" | "NEGATIVE" or null,
+            "entry_price": number or null,
+            "stop_loss": number or null,
+            "take_profit_short": number or null,
+            "take_profit_mid": number or null,
+            "take_profit_long": number or null
+        }}
+
+        Return ONLY valid JSON, no other text before or after.
         """
         try:
             # Call LLM for analysis

@@ -125,7 +125,7 @@ class DataCollectionNode(BaseNode):
                     )
                     logger.debug("API returned %d klines for %s", len(klines) if klines else 0, symbol)
                 except Exception as e:
-                    logger.exception("Failed to fetch klines for %s: %s", symbol, e)
+                    logger.error("Failed to fetch klines for %s: %s", symbol, e)
                     klines = []
 
                 if klines:
@@ -220,7 +220,7 @@ class DataCollectionNode(BaseNode):
                     )
                     logger.debug("API returned %d klines for %s", len(klines) if klines else 0, symbol)
                 except Exception as e:
-                    logger.exception("Failed to fetch klines for %s: %s", symbol, e)
+                    logger.error("Failed to fetch klines for %s: %s", symbol, e)
                     klines = []
 
                 if klines:

@@ -26,6 +26,8 @@ from app.backend.api.schemas.council_views import (
     HoldTimes,
     PerformanceDataPoint,
     PortfolioHoldingDetail,
+    TotalAccountValueDataPoint,
+    TotalAccountValueResponse,
     TradeRecord,
     TradingMetricsResponse,
 )
@@ -108,6 +110,9 @@ __all__ = [
     "PerformanceDataPoint",
     "PortfolioHoldingDetail",
     "PortfolioPosition",
+    "CouncilAccountValueSeries",
+    "TotalAccountValueDataPoint",
+    "TotalAccountValueResponse",
     # Storage
     "SaveJsonRequest",
     "StartAsterStreamingRequest",

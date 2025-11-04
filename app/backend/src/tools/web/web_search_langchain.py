@@ -69,32 +69,33 @@ def duckduckgo_web_search(query: str, max_results: int = 10) -> str:
         JSON string with search results including titles, links, snippets, and sources
     """
     try:
-        logger.info("Searching DuckDuckGo", query=query)
+        logger.info(f"Searching DuckDuckGo for: {query}")
 
         with DDGS(timeout=10) as ddgs:
             results = list(ddgs.text(query=query, max_results=max_results, backend="auto"))
 
-        search_results = [
-            {
-                "title": result.get("title", ""),
-                "link": result.get("href", ""),
-                "snippet": result.get("body", ""),
-                "source": _extract_domain(result.get("href", "")),
-                "date": result.get("date", None),
-            }
-            for result in results
-        ]
+        search_results = []
+        for result in results:
+            search_results.append(
+                {
+                    "title": result.get("title", ""),
+                    "link": result.get("href", ""),
+                    "snippet": result.get("body", ""),
+                    "source": _extract_domain(result.get("href", "")),
+                    "date": result.get("date", None),
+                }
+            )
 
-        logger.info("DuckDuckGo results", count=len(search_results), query=query)
+        logger.info(f"Found {len(search_results)} search results for query: {query}")
         return json.dumps(search_results, indent=2)
 
     except Exception as e:
-        logger.exception("DuckDuckGo search failed", error=str(e))
+        logger.exception(f"Error searching DuckDuckGo: {e}")
         return json.dumps({"error": f"Search failed: {e!s}"})
 
 
 @tool(args_schema=CryptoNewsSearchInput)
-def crypto_news_search(symbol: str, max_results: int = 10, *, include_rss: bool = True) -> str:
+def crypto_news_search(symbol: str, max_results: int = 10, include_rss: bool = True) -> str:
     """Search for cryptocurrency news using DuckDuckGo and RSS feeds.
 
     This tool finds recent news articles about a specific cryptocurrency using web search
@@ -120,15 +121,14 @@ def crypto_news_search(symbol: str, max_results: int = 10, *, include_rss: bool 
         clean_symbol = symbol.replace("/USDT", "").replace("USDT", "").replace("/", "").strip()
 
         # Create crypto-specific search query
-        crypto_query = (
-            "cryptocurrency news market analysis"
-            if len(clean_symbol) < 2
-            else f"{clean_symbol} crypto news price analysis"
-        )
+        if len(clean_symbol) < 2:
+            crypto_query = "cryptocurrency news market analysis"
+        else:
+            crypto_query = f"{clean_symbol} crypto news price analysis"
 
-        logger.info("Searching crypto news", symbol=symbol, clean_symbol=clean_symbol)
+        logger.info(f"Searching crypto news for symbol: {symbol} (cleaned: {clean_symbol})")
 
-        results: list[dict] = []
+        results = []
 
         # Get DuckDuckGo search results
         ddg_results = json.loads(
@@ -142,10 +142,10 @@ def crypto_news_search(symbol: str, max_results: int = 10, *, include_rss: bool 
             rss_news = _fetch_rss_news(max_results // 2, hours=12)
 
             # Filter RSS results for the symbol
-            symbol_lower = clean_symbol.lower()
             for news in rss_news:
                 title_lower = news["title"].lower()
                 desc_lower = news["description"].lower()
+                symbol_lower = clean_symbol.lower()
 
                 if symbol_lower in title_lower or symbol_lower in desc_lower:
                     results.append(
@@ -159,18 +159,18 @@ def crypto_news_search(symbol: str, max_results: int = 10, *, include_rss: bool 
                     )
 
         # Remove duplicates based on URL
-        seen_urls: set[str] = set()
-        unique_results: list[dict] = []
+        seen_urls = set()
+        unique_results = []
         for result in results:
             if result["link"] not in seen_urls:
                 seen_urls.add(result["link"])
                 unique_results.append(result)
 
-        logger.info("Crypto news results", count=len(unique_results), symbol=symbol)
+        logger.info(f"Found {len(unique_results)} total crypto news results for {symbol}")
         return json.dumps(unique_results[:max_results], indent=2)
 
     except Exception as e:
-        logger.exception("Crypto news search failed", error=str(e))
+        logger.exception(f"Error searching crypto news: {e}")
         return json.dumps({"error": f"Crypto news search failed: {e!s}"})
 
 
@@ -250,8 +250,8 @@ def crypto_web_sentiment(symbol: str, max_results: int = 10) -> str:
             "downturn",
         ]
 
-        sentiment_scores: list[float] = []
-        articles: list[dict] = []
+        sentiment_scores = []
+        articles = []
 
         for result in news_results:
             text = f"{result['title']} {result['snippet']}".lower()
@@ -306,7 +306,7 @@ def crypto_web_sentiment(symbol: str, max_results: int = 10) -> str:
         return json.dumps(result, indent=2)
 
     except Exception as e:
-        logger.exception("Crypto web sentiment failed", error=str(e))
+        logger.exception(f"Error analyzing crypto sentiment: {e}")
         return json.dumps({"error": f"Sentiment analysis failed: {e!s}"})
 
 
@@ -334,7 +334,7 @@ def rss_news_feed(max_results: int = 30, hours: int = 12) -> str:
         news_items = _fetch_rss_news(max_results, hours)
         return json.dumps(news_items, indent=2)
     except Exception as e:
-        logger.exception("RSS news fetch failed", error=str(e))
+        logger.exception(f"Error fetching RSS news: {e}")
         return json.dumps({"error": f"RSS feed fetch failed: {e!s}"})
 
 
@@ -343,10 +343,9 @@ def _extract_domain(url: str) -> str | None:
     """Extract domain from URL."""
     try:
         parsed = urlparse(url)
+        return parsed.netloc
     except Exception:
         return None
-    else:
-        return parsed.netloc
 
 
 def _fetch_rss_news(max_results: int = 30, hours: int = 12) -> list[dict]:
@@ -368,8 +367,8 @@ def _fetch_rss_news(max_results: int = 30, hours: int = 12) -> list[dict]:
 
     all_feeds = crypto_rss_feeds + general_rss_feeds
 
-    news_items: list[dict] = []
-    cutoff_time = datetime.now(datetime.UTC) - timedelta(hours=hours)
+    news_items = []
+    cutoff_time = datetime.now() - timedelta(hours=hours)
 
     items_per_feed = max(1, max_results // len(all_feeds))
 
@@ -378,11 +377,11 @@ def _fetch_rss_news(max_results: int = 30, hours: int = 12) -> list[dict]:
             break
 
         try:
-            logger.debug("Fetching RSS feed", feed_url=feed_url)
+            logger.debug(f"Fetching RSS feed: {feed_url}")
             feed = feedparser.parse(feed_url)
 
             if feed.bozo:
-                logger.warning("RSS feed parsing warning", feed_url=feed_url, error=str(feed.bozo_exception))
+                logger.warning(f"RSS feed parsing warning for {feed_url}: {feed.bozo_exception}")
                 continue
 
             for entry in feed.entries[:items_per_feed]:
@@ -390,9 +389,9 @@ def _fetch_rss_news(max_results: int = 30, hours: int = 12) -> list[dict]:
                     # Parse publication date
                     published = None
                     if hasattr(entry, "published_parsed") and entry.published_parsed:
-                        published = datetime(*entry.published_parsed[:6], tzinfo=datetime.UTC)
+                        published = datetime(*entry.published_parsed[:6])
                     elif hasattr(entry, "updated_parsed") and entry.updated_parsed:
-                        published = datetime(*entry.updated_parsed[:6], tzinfo=datetime.UTC)
+                        published = datetime(*entry.updated_parsed[:6])
 
                     # Skip old news
                     if published and published < cutoff_time:
@@ -409,15 +408,15 @@ def _fetch_rss_news(max_results: int = 30, hours: int = 12) -> list[dict]:
                     )
 
                 except Exception as e:
-                    logger.warning("Error parsing RSS entry", feed_url=feed_url, error=str(e))
+                    logger.warning(f"Error parsing RSS entry from {feed_url}: {e}")
                     continue
 
         except Exception as e:
-            logger.warning("Error fetching RSS feed", feed_url=feed_url, error=str(e))
+            logger.warning(f"Error fetching RSS feed {feed_url}: {e}")
             continue
 
     # Sort by publication date (newest first) and limit to max_results
-    news_items.sort(key=lambda x: x["published"] or "1970-01-01T00:00:00+00:00", reverse=True)
+    news_items.sort(key=lambda x: x["published"] or "1970-01-01T00:00:00", reverse=True)
     return news_items[:max_results]
 
 

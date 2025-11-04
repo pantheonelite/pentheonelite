@@ -6,10 +6,9 @@ Create Date: 2025-10-28 00:00:00.000000
 
 """
 
+from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
-
-from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "0016"
@@ -76,18 +75,14 @@ def upgrade() -> None:
         sa.Column("market_conditions", postgresql.JSONB, nullable=True),
         # Execution results (if trade was executed)
         sa.Column("was_executed", sa.Boolean(), nullable=False, server_default="false"),
-        sa.Column(
-            "market_order_id", sa.Integer(), sa.ForeignKey("market_orders.id", ondelete="SET NULL"), nullable=True
-        ),
+        sa.Column("market_order_id", sa.Integer(), sa.ForeignKey("market_orders.id", ondelete="SET NULL"), nullable=True),
         sa.Column("execution_reason", sa.String(100), nullable=True),  # e.g., "low_confidence", "insufficient_capital"
         # Metadata
         sa.Column("meta_data", postgresql.JSONB, nullable=True),
     )
 
     # Create indexes for common queries
-    op.create_index(
-        "ix_consensus_decisions_council_id_created_at", "consensus_decisions", ["council_id", "created_at"]
-    )
+    op.create_index("ix_consensus_decisions_council_id_created_at", "consensus_decisions", ["council_id", "created_at"])
     op.create_index("ix_consensus_decisions_decision_created_at", "consensus_decisions", ["decision", "created_at"])
 
 

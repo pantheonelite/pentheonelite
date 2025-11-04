@@ -5,24 +5,22 @@ Revises: 0014
 Create Date: 2025-10-28 12:00:00.000000
 
 """
-
+from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-from alembic import op
-
 # revision identifiers, used by Alembic.
-revision = "0015"
-down_revision = "0014"
+revision = '0015'
+down_revision = '0014'
 branch_labels = None
 depends_on = None
 
 
 def upgrade() -> None:
     # Add new columns to market_orders
-    op.add_column("market_orders", sa.Column("confidence", sa.Numeric(precision=5, scale=4), nullable=True))
-    op.add_column("market_orders", sa.Column("position_size_pct", sa.Numeric(precision=5, scale=4), nullable=True))
-    op.add_column("market_orders", sa.Column("is_paper_trade", sa.Boolean(), nullable=False, server_default="true"))
+    op.add_column('market_orders', sa.Column('confidence', sa.Numeric(precision=5, scale=4), nullable=True))
+    op.add_column('market_orders', sa.Column('position_size_pct', sa.Numeric(precision=5, scale=4), nullable=True))
+    op.add_column('market_orders', sa.Column('is_paper_trade', sa.Boolean(), nullable=False, server_default='true'))
 
     # Update existing side values from "long"/"short" to "buy"/"sell"
     # Note: This is a one-way migration - we assume long=buy, short=sell
@@ -36,8 +34,8 @@ def upgrade() -> None:
     """)
 
     # Add new columns to councils for portfolio management
-    op.add_column("councils", sa.Column("available_capital", sa.Numeric(precision=20, scale=2), nullable=True))
-    op.add_column("councils", sa.Column("portfolio_holdings", postgresql.JSONB(astext_type=sa.Text()), nullable=True))
+    op.add_column('councils', sa.Column('available_capital', sa.Numeric(precision=20, scale=2), nullable=True))
+    op.add_column('councils', sa.Column('portfolio_holdings', postgresql.JSONB(astext_type=sa.Text()), nullable=True))
 
     # Initialize available_capital from current_capital or initial_capital
     op.execute("""
@@ -50,8 +48,8 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     # Remove columns from councils
-    op.drop_column("councils", "portfolio_holdings")
-    op.drop_column("councils", "available_capital")
+    op.drop_column('councils', 'portfolio_holdings')
+    op.drop_column('councils', 'available_capital')
 
     # Revert side values (best effort)
     op.execute("""
@@ -64,6 +62,6 @@ def downgrade() -> None:
     """)
 
     # Remove columns from market_orders
-    op.drop_column("market_orders", "is_paper_trade")
-    op.drop_column("market_orders", "position_size_pct")
-    op.drop_column("market_orders", "confidence")
+    op.drop_column('market_orders', 'is_paper_trade')
+    op.drop_column('market_orders', 'position_size_pct')
+    op.drop_column('market_orders', 'confidence')

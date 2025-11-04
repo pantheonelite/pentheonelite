@@ -7,10 +7,9 @@ Create Date: 2025-11-01 00:00:00.000000
 Matches Binance Futures API and Aster Perpetual API terminology exactly.
 """
 
+from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
-
-from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "0019"

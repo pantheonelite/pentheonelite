@@ -1,13 +1,13 @@
 """Repository for unified Council operations."""
 
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from app.backend.db.models import AgentDebate
 from app.backend.db.models.consensus import ConsensusDecision
 from app.backend.db.models.council import Council, CouncilRun, CouncilRunCycle
 from app.backend.db.repositories.base_repository import AbstractSqlRepository
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -98,6 +98,8 @@ class CouncilRepository(AbstractSqlRepository[Council]):
         is_template: bool = False,
         is_paper_trading: bool = True,
         forked_from_id: int | None = None,
+        trading_mode: str = "paper",
+        trading_type: str = "futures",
     ) -> Council:
         """
         Create a new council.
@@ -610,6 +612,32 @@ class CouncilRepository(AbstractSqlRepository[Council]):
         councils = list(result.scalars().all())
         return [self._load_all_attributes(c) for c in councils]
 
+    async def check_council_names_exist(self, names: set[str]) -> set[str]:
+        """
+        Check which council names exist in the database.
+        
+        This is more efficient than loading all councils when checking
+        for specific names, reducing lock timeout risks.
+        
+        Parameters
+        ----------
+        names : set[str]
+            Set of council names to check
+            
+        Returns
+        -------
+        set[str]
+            Set of council names that exist in the database
+        """
+        if not names:
+            return set()
+        
+        result = await self.session.execute(
+            select(Council.name).where(Council.name.in_(names))
+        )
+        existing_names = {row[0] for row in result.all()}
+        return existing_names
+
     # ========================================================================
     # Agent Debate Methods
     # ========================================================================
@@ -899,6 +927,143 @@ class CouncilRepository(AbstractSqlRepository[Council]):
             .limit(limit)
         )
         return list(result.scalars().all())
+
+    async def get_council_account_values(
+        self,
+        days: int = 72,
+        limit: int = 1000,
+    ) -> dict[int, dict]:
+        """
+        Get account values for each council separately over time.
+
+        Returns data grouped by council_id so each council can be displayed as a separate line.
+
+        Parameters
+        ----------
+        days : int
+            Number of days to look back
+        limit : int
+            Maximum number of snapshots per council
+
+        Returns
+        -------
+        dict[int, dict]
+            Dictionary mapping council_id to:
+            - council_name: str
+            - data_points: list[dict] with keys: timestamp, total_value
+            - current_value: float
+        """
+        from app.backend.db.models import CouncilPerformance
+        from collections import defaultdict
+
+        cutoff_date = datetime.now(UTC) - timedelta(days=days)
+
+        # Get all performance snapshots for system councils within time range
+        result = await self.session.execute(
+            select(
+                Council.id.label("council_id"),
+                Council.name.label("council_name"),
+                CouncilPerformance.timestamp,
+                CouncilPerformance.total_value,
+                Council.current_capital,
+            )
+            .join(Council, Council.id == CouncilPerformance.council_id)
+            .where(
+                and_(
+                    Council.is_system.is_(True),
+                    CouncilPerformance.timestamp >= cutoff_date,
+                )
+            )
+            .order_by(Council.id, CouncilPerformance.timestamp.asc())
+            .limit(limit * 20)  # Get more records for grouping
+        )
+
+        rows = result.all()
+
+        # Group by council_id and hour
+        councils_data: dict[int, dict[str, any]] = defaultdict(lambda: {
+            "council_name": "",
+            "hourly_data": defaultdict(float),
+            "timestamps": set(),
+            "current_value": 0.0,
+        })
+
+        for row in rows:
+            council_id = row.council_id
+            if council_id not in councils_data:
+                councils_data[council_id]["council_name"] = row.council_name
+                councils_data[council_id]["current_value"] = float(row.current_capital or 0)
+
+            # Round timestamp to nearest hour for grouping
+            hour_key = row.timestamp.replace(minute=0, second=0, microsecond=0)
+            councils_data[council_id]["hourly_data"][hour_key] = float(row.total_value)
+            councils_data[council_id]["timestamps"].add(hour_key)
+
+        # Get current values for councils that might not have snapshots yet
+        current_result = await self.session.execute(
+            select(
+                Council.id,
+                Council.name,
+                Council.current_capital,
+            )
+            .where(
+                and_(
+                    Council.is_system.is_(True),
+                    Council.current_capital.is_not(None),
+                )
+            )
+        )
+
+        for row in current_result.all():
+            council_id = row.id
+            if council_id not in councils_data:
+                councils_data[council_id] = {
+                    "council_name": row.name,
+                    "hourly_data": defaultdict(float),
+                    "timestamps": set(),
+                    "current_value": float(row.current_capital or 0),
+                }
+            else:
+                councils_data[council_id]["current_value"] = float(row.current_capital or 0)
+
+        # Convert to final format
+        result_data = {}
+        now = datetime.now(UTC).replace(minute=0, second=0, microsecond=0)
+        
+        for council_id, data in councils_data.items():
+            # Convert hourly data to sorted list
+            data_points = sorted(
+                [
+                    {
+                        "timestamp": timestamp,
+                        "total_value": data["hourly_data"][timestamp],
+                    }
+                    for timestamp in sorted(data["timestamps"])
+                ],
+                key=lambda x: x["timestamp"],
+            )
+
+            # Add current value if different from last snapshot or no data exists
+            if data_points:
+                last_value = data_points[-1]["total_value"]
+                if abs(data["current_value"] - last_value) > 0.01 or (now - data_points[-1]["timestamp"]).total_seconds() > 3600:
+                    data_points.append({
+                        "timestamp": now,
+                        "total_value": data["current_value"],
+                    })
+            elif data["current_value"] > 0:
+                data_points.append({
+                    "timestamp": now,
+                    "total_value": data["current_value"],
+                })
+
+            result_data[council_id] = {
+                "council_name": data["council_name"],
+                "data_points": data_points,
+                "current_value": data["current_value"],
+            }
+
+        return result_data
 
     async def create_performance_snapshot(
         self,

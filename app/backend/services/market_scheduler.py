@@ -82,10 +82,12 @@ class MarketScheduler:
                 # Wait for next interval
                 await asyncio.sleep(interval_seconds)
 
-            except Exception:
-                logger.exception(
+            except Exception as e:
+                logger.error(
                     "Error in time-based schedule",
                     council_id=council_id,
+                    error=str(e),
+                    exc_info=True,
                 )
                 # Wait before retrying
                 await asyncio.sleep(60)
@@ -119,13 +121,14 @@ class MarketScheduler:
         # For Phase 1: Just keep the scheduler alive without WebSocket monitoring
         # This will be implemented when full ASTER WebSocket integration is complete
         try:
-            # Keep-alive via Event instead of busy sleep loop
-            keep_alive = asyncio.Event()
-            await keep_alive.wait()
+            while True:
+                await asyncio.sleep(60)  # Keep alive
 
-        except Exception:
-            logger.exception(
+        except Exception as e:
+            logger.error(
                 "Error in price event monitoring",
+                error=str(e),
+                exc_info=True,
             )
 
     async def _handle_price_update(
@@ -177,14 +180,15 @@ class MarketScheduler:
 
                         if self.orchestrator:
                             # Run cycle in background
-                            _task = asyncio.create_task(self.orchestrator.run_council_cycle(council_id))
-                            # Optionally store or add a done-callback if needed in future
+                            asyncio.create_task(self.orchestrator.run_council_cycle(council_id))
 
                         self.last_trigger_times[council_id] = now
 
-        except Exception:
-            logger.exception(
+        except Exception as e:
+            logger.error(
                 "Error handling price update",
+                error=str(e),
+                exc_info=True,
             )
 
     async def _is_significant_price_change(self, symbol: str) -> bool:

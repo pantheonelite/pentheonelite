@@ -94,194 +94,6 @@ class DisplayManager:
 
         return wrapped
 
-    def _print_symbol_header(self, symbol: str) -> None:
-        self._print(f"\n{Fore.WHITE}{Style.BRIGHT}Analysis for {Fore.CYAN}{symbol}{Style.RESET_ALL}")
-        self._print(f"{Fore.WHITE}{Style.BRIGHT}{'=' * 50}{Style.RESET_ALL}")
-
-    def _format_agent_row(
-        self,
-        agent_name: str,
-        signal_type: str,
-        confidence: float,
-        reasoning: str,
-        color: str,
-    ) -> list[str]:
-        return [
-            f"{color}{agent_name}{Style.RESET_ALL}" if color else f"{Fore.CYAN}{agent_name}{Style.RESET_ALL}",
-            f"{color}{signal_type}{Style.RESET_ALL}",
-            f"{Fore.WHITE}{confidence}%{Style.RESET_ALL}",
-            f"{Fore.WHITE}{reasoning}{Style.RESET_ALL}",
-        ]
-
-    def _collect_analyst_rows(self, symbol: str, analyst_signals: dict) -> list[list[str]]:
-        rows: list[list[str]] = []
-        for agent, signals in analyst_signals.items():
-            if symbol not in signals or agent == "crypto_risk_management_agent":
-                continue
-            signal = signals[symbol]
-            agent_name = (
-                agent.replace("crypto_technical", "Technical Analyst").replace("_agent", "").replace("_", " ").title()
-            )
-            signal_type = signal.get("signal", "").upper()
-            confidence = signal.get("confidence", 0) * 100
-            color_map = {
-                "STRONG_BUY": Fore.GREEN,
-                "BUY": Fore.GREEN,
-                "HOLD": Fore.YELLOW,
-                "SELL": Fore.RED,
-                "STRONG_SELL": Fore.RED,
-            }
-            color = color_map.get(signal_type, Fore.WHITE)
-            reasoning = signal.get("reasoning", "")
-            reasoning_str = json.dumps(reasoning, indent=2) if isinstance(reasoning, dict) else str(reasoning)
-            rows.append(
-                self._format_agent_row(
-                    agent_name,
-                    signal_type,
-                    confidence,
-                    self._wrap_text(reasoning_str),
-                    color,
-                )
-            )
-        return rows
-
-    def _collect_sentiment_rows(self, symbol: str, sentiment_signals: dict) -> list[list[str]]:
-        rows: list[list[str]] = []
-        for agent, signals in sentiment_signals.items():
-            if symbol not in signals:
-                continue
-            signal = signals[symbol]
-            agent_name = f"Sentiment ({agent.replace('_agent', '').replace('_', ' ').title()})"
-            signal_type = signal.get("sentiment", "").upper()
-            confidence = signal.get("confidence", 0) * 100
-            color_map = {
-                "VERY_POSITIVE": Fore.GREEN,
-                "POSITIVE": Fore.GREEN,
-                "NEUTRAL": Fore.YELLOW,
-                "NEGATIVE": Fore.RED,
-                "VERY_NEGATIVE": Fore.RED,
-            }
-            color = color_map.get(signal_type, Fore.WHITE)
-            reasoning = signal.get("reasoning", "")
-            reasoning_str = json.dumps(reasoning, indent=2) if isinstance(reasoning, dict) else str(reasoning)
-            rows.append(
-                self._format_agent_row(
-                    agent_name,
-                    signal_type,
-                    confidence,
-                    self._wrap_text(reasoning_str),
-                    color,
-                )
-            )
-        return rows
-
-    def _collect_persona_rows(self, symbol: str, persona_signals: dict) -> list[list[str]]:
-        rows: list[list[str]] = []
-        for agent_data in persona_signals.values():
-            agent_sigs = agent_data.get("agent_signals", {})
-            for agent_key, signals in agent_sigs.items():
-                if isinstance(signals, dict) and symbol in signals:
-                    signal = signals[symbol]
-                    agent_name = agent_key.replace("_", " ").title()
-                    signal_type = signal.get("signal", "").upper()
-                    confidence = signal.get("confidence", 0) * 100
-                    color_map = {
-                        "STRONG_BUY": Fore.GREEN,
-                        "BUY": Fore.GREEN,
-                        "HOLD": Fore.YELLOW,
-                        "SELL": Fore.RED,
-                        "STRONG_SELL": Fore.RED,
-                    }
-                    color = color_map.get(signal_type, Fore.WHITE)
-                    reasoning = signal.get("reasoning", "")
-                    rows.append(
-                        [
-                            f"{Fore.BLUE}{agent_name}{Style.RESET_ALL}",
-                            f"{color}{signal_type}{Style.RESET_ALL}",
-                            f"{Fore.WHITE}{confidence:.1f}%{Style.RESET_ALL}",
-                            f"{Fore.WHITE}{self._wrap_text(reasoning[:200])}{Style.RESET_ALL}",
-                        ]
-                    )
-                    break
-        return rows
-
-    def _print_agent_table(self, symbol: str, table_data: list[list[str]]) -> None:
-        self._print(
-            "\n"
-            f"{Fore.WHITE}{Style.BRIGHT}AGENT ANALYSIS:{Style.RESET_ALL} "
-            f"[{Fore.CYAN}{symbol}{Style.RESET_ALL}]"
-        )
-        if not table_data:
-            self._print("No analyst data available")
-            return
-        self._print(
-            tabulate(
-                table_data,
-                headers=[f"{Fore.WHITE}Agent", "Signal", "Confidence", "Reasoning"],
-                tablefmt="grid",
-                colalign=("left", "center", "right", "left"),
-            )
-        )
-
-    def _print_decision_block(self, symbol: str, decision: dict) -> None:
-        action = decision.get("action", "").upper()
-        color = {"BUY": Fore.GREEN, "SELL": Fore.RED, "HOLD": Fore.YELLOW}.get(action, Fore.WHITE)
-        reasoning = self._wrap_text(decision.get("reasoning", ""))
-        confidence = decision.get("confidence")
-        confidence_str = f"{confidence:.1f}%" if confidence is not None else "N/A"
-        decision_data = [
-            ["Action", f"{color}{action}{Style.RESET_ALL}"],
-            ["Quantity", f"{color}{decision.get('quantity', 0)}{Style.RESET_ALL}"],
-            ["Confidence", f"{Fore.WHITE}{confidence_str}{Style.RESET_ALL}"],
-            ["Reasoning", f"{Fore.WHITE}{reasoning}{Style.RESET_ALL}"],
-        ]
-        self._print(
-            "\n"
-            f"{Fore.WHITE}{Style.BRIGHT}TRADING DECISION:{Style.RESET_ALL} "
-            f"[{Fore.CYAN}{symbol}{Style.RESET_ALL}]"
-        )
-        self._print(tabulate(decision_data, tablefmt="grid", colalign=("left", "left")))
-
-    def _print_portfolio_summary(self, decisions: dict, analyst_signals: dict) -> None:
-        self._print(f"\n{Fore.WHITE}{Style.BRIGHT}PORTFOLIO SUMMARY:{Style.RESET_ALL}")
-        portfolio_data: list[list[str]] = []
-        for symbol, decision in decisions.items():
-            action = decision.get("action", "").upper()
-            action_color = {"BUY": Fore.GREEN, "SELL": Fore.RED, "HOLD": Fore.YELLOW}.get(action, Fore.WHITE)
-            confidence = decision.get("confidence")
-            confidence_str = f"{confidence:.1f}%" if confidence is not None else "N/A"
-            bullish_count = bearish_count = neutral_count = 0
-            for signals in analyst_signals.values():
-                if symbol in signals:
-                    signal_type = signals[symbol].get("signal", "").upper()
-                    if signal_type in ["STRONG_BUY", "BUY"]:
-                        bullish_count += 1
-                    elif signal_type in ["STRONG_SELL", "SELL"]:
-                        bearish_count += 1
-                    elif signal_type == "HOLD":
-                        neutral_count += 1
-            portfolio_data.append(
-                [
-                    f"{Fore.CYAN}{symbol}{Style.RESET_ALL}",
-                    f"{action_color}{action}{Style.RESET_ALL}",
-                    f"{action_color}{decision.get('quantity', 0)}{Style.RESET_ALL}",
-                    f"{Fore.WHITE}{confidence_str}{Style.RESET_ALL}",
-                    f"{Fore.GREEN}{bullish_count}{Style.RESET_ALL}",
-                    f"{Fore.RED}{bearish_count}{Style.RESET_ALL}",
-                    f"{Fore.YELLOW}{neutral_count}{Style.RESET_ALL}",
-                ]
-            )
-        headers = [
-            f"{Fore.WHITE}Symbol",
-            f"{Fore.WHITE}Action",
-            f"{Fore.WHITE}Quantity",
-            f"{Fore.WHITE}Confidence",
-            f"{Fore.WHITE}Bullish",
-            f"{Fore.WHITE}Bearish",
-            f"{Fore.WHITE}Neutral",
-        ]
-        self._print(tabulate(portfolio_data, headers=headers, tablefmt="grid"))
-
     def print_trading_output(self, result: dict) -> None:
         """
         Print formatted trading results.
@@ -301,20 +113,199 @@ class DisplayManager:
             self._print(f"{Fore.RED}No trading decisions available{Style.RESET_ALL}")
             return
 
-        analyst_signals = result.get("analyst_signals", {})
-        sentiment_signals = result.get("sentiment_signals", {})
-        persona_signals = result.get("persona_signals", {})
+        # Print decisions for each symbol
+        for symbol, decision in decisions.items():
+            self._print(f"\n{Fore.WHITE}{Style.BRIGHT}Analysis for {Fore.CYAN}{symbol}{Style.RESET_ALL}")
+            self._print(f"{Fore.WHITE}{Style.BRIGHT}{'=' * 50}{Style.RESET_ALL}")
+
+            # Prepare analyst signals table
+            table_data = []
+            analyst_signals = result.get("analyst_signals", {})
+            sentiment_signals = result.get("sentiment_signals", {})
+            persona_signals = result.get("persona_signals", {})
+
+            # Add technical analysis signals (from technical_signals)
+            for agent, signals in analyst_signals.items():
+                if symbol not in signals or agent == "crypto_risk_management_agent":
+                    continue
+
+                signal = signals[symbol]
+                # Map agent name for technical analyst
+                agent_name = (
+                    agent.replace("crypto_technical", "Technical Analyst")
+                    .replace("_agent", "")
+                    .replace("_", " ")
+                    .title()
+                )
+                signal_type = signal.get("signal", "").upper()
+                confidence = signal.get("confidence", 0) * 100  # Convert to percentage
+
+                signal_color = {
+                    "STRONG_BUY": Fore.GREEN,
+                    "BUY": Fore.GREEN,
+                    "HOLD": Fore.YELLOW,
+                    "SELL": Fore.RED,
+                    "STRONG_SELL": Fore.RED,
+                }.get(signal_type, Fore.WHITE)
+
+                reasoning = signal.get("reasoning", "")
+                reasoning_str = json.dumps(reasoning, indent=2) if isinstance(reasoning, dict) else str(reasoning)
+                reasoning_str = self._wrap_text(reasoning_str)
+
+                table_data.append(
+                    [
+                        f"{Fore.CYAN}{agent_name}{Style.RESET_ALL}",
+                        f"{signal_color}{signal_type}{Style.RESET_ALL}",
+                        f"{Fore.WHITE}{confidence}%{Style.RESET_ALL}",
+                        f"{Fore.WHITE}{reasoning_str}{Style.RESET_ALL}",
+                    ]
+                )
+
+            # Add sentiment analysis signals
+            for agent, signals in sentiment_signals.items():
+                if symbol not in signals:
+                    continue
+
+                signal = signals[symbol]
+                agent_name = f"Sentiment ({agent.replace('_agent', '').replace('_', ' ').title()})"
+                signal_type = signal.get("sentiment", "").upper()
+                confidence = signal.get("confidence", 0) * 100
+
+                signal_color = {
+                    "VERY_POSITIVE": Fore.GREEN,
+                    "POSITIVE": Fore.GREEN,
+                    "NEUTRAL": Fore.YELLOW,
+                    "NEGATIVE": Fore.RED,
+                    "VERY_NEGATIVE": Fore.RED,
+                }.get(signal_type, Fore.WHITE)
+
+                reasoning = signal.get("reasoning", "")
+                reasoning_str = json.dumps(reasoning, indent=2) if isinstance(reasoning, dict) else str(reasoning)
+                reasoning_str = self._wrap_text(reasoning_str)
+
+                table_data.append(
+                    [
+                        f"{Fore.MAGENTA}{agent_name}{Style.RESET_ALL}",
+                        f"{signal_color}{signal_type}{Style.RESET_ALL}",
+                        f"{Fore.WHITE}{confidence}%{Style.RESET_ALL}",
+                        f"{Fore.WHITE}{reasoning_str}{Style.RESET_ALL}",
+                    ]
+                )
+
+            # Add persona analysis signals
+            for agent_data in persona_signals.values():
+                agent_sigs = agent_data.get("agent_signals", {})
+                # Check if this persona agent has signals for the symbol
+                for agent_key, signals in agent_sigs.items():
+                    if isinstance(signals, dict) and symbol in signals:
+                        signal = signals[symbol]
+                        agent_name = agent_key.replace("_", " ").title()
+                        signal_type = signal.get("signal", "").upper()
+                        confidence = signal.get("confidence", 0) * 100
+
+                        signal_color = {
+                            "STRONG_BUY": Fore.GREEN,
+                            "BUY": Fore.GREEN,
+                            "HOLD": Fore.YELLOW,
+                            "SELL": Fore.RED,
+                            "STRONG_SELL": Fore.RED,
+                        }.get(signal_type, Fore.WHITE)
+
+                        reasoning = signal.get("reasoning", "")
+                        reasoning_str = self._wrap_text(reasoning[:200])  # Truncate for display
+
+                        table_data.append(
+                            [
+                                f"{Fore.BLUE}{agent_name}{Style.RESET_ALL}",
+                                f"{signal_color}{signal_type}{Style.RESET_ALL}",
+                                f"{Fore.WHITE}{confidence:.1f}%{Style.RESET_ALL}",
+                                f"{Fore.WHITE}{reasoning_str}{Style.RESET_ALL}",
+                            ]
+                        )
+                        break  # Only show first matching signal per persona
+
+            # Print analyst table
+            self._print(
+                f"\n{Fore.WHITE}{Style.BRIGHT}AGENT ANALYSIS:{Style.RESET_ALL} [{Fore.CYAN}{symbol}{Style.RESET_ALL}]"
+            )
+
+            # Only print table if we have data
+            if table_data:
+                self._print(
+                    tabulate(
+                        table_data,
+                        headers=[f"{Fore.WHITE}Agent", "Signal", "Confidence", "Reasoning"],
+                        tablefmt="grid",
+                        colalign=("left", "center", "right", "left"),
+                    )
+                )
+            else:
+                self._print("No analyst data available")
+
+            # Print trading decision
+            action = decision.get("action", "").upper()
+            action_color = {"BUY": Fore.GREEN, "SELL": Fore.RED, "HOLD": Fore.YELLOW}.get(action, Fore.WHITE)
+            reasoning = self._wrap_text(decision.get("reasoning", ""))
+            confidence = decision.get("confidence")
+            confidence_str = f"{confidence:.1f}%" if confidence is not None else "N/A"
+
+            decision_data = [
+                ["Action", f"{action_color}{action}{Style.RESET_ALL}"],
+                ["Quantity", f"{action_color}{decision.get('quantity', 0)}{Style.RESET_ALL}"],
+                ["Confidence", f"{Fore.WHITE}{confidence_str}{Style.RESET_ALL}"],
+                ["Reasoning", f"{Fore.WHITE}{reasoning}{Style.RESET_ALL}"],
+            ]
+
+            self._print(
+                f"\n{Fore.WHITE}{Style.BRIGHT}TRADING DECISION:{Style.RESET_ALL} [{Fore.CYAN}{symbol}{Style.RESET_ALL}]"
+            )
+            self._print(tabulate(decision_data, tablefmt="grid", colalign=("left", "left")))
+
+        # Print portfolio summary
+        self._print(f"\n{Fore.WHITE}{Style.BRIGHT}PORTFOLIO SUMMARY:{Style.RESET_ALL}")
+        portfolio_data = []
 
         for symbol, decision in decisions.items():
-            self._print_symbol_header(symbol)
-            table_data: list[list[str]] = []
-            table_data.extend(self._collect_analyst_rows(symbol, analyst_signals))
-            table_data.extend(self._collect_sentiment_rows(symbol, sentiment_signals))
-            table_data.extend(self._collect_persona_rows(symbol, persona_signals))
-            self._print_agent_table(symbol, table_data)
-            self._print_decision_block(symbol, decision)
+            action = decision.get("action", "").upper()
+            action_color = {"BUY": Fore.GREEN, "SELL": Fore.RED, "HOLD": Fore.YELLOW}.get(action, Fore.WHITE)
+            confidence = decision.get("confidence")
+            confidence_str = f"{confidence:.1f}%" if confidence is not None else "N/A"
 
-        self._print_portfolio_summary(decisions, analyst_signals)
+            # Calculate signal counts
+            bullish_count = bearish_count = neutral_count = 0
+            for signals in analyst_signals.values():
+                if symbol in signals:
+                    signal_type = signals[symbol].get("signal", "").upper()
+                    if signal_type in ["STRONG_BUY", "BUY"]:
+                        bullish_count += 1
+                    elif signal_type in ["STRONG_SELL", "SELL"]:
+                        bearish_count += 1
+                    elif signal_type == "HOLD":
+                        neutral_count += 1
+
+            portfolio_data.append(
+                [
+                    f"{Fore.CYAN}{symbol}{Style.RESET_ALL}",
+                    f"{action_color}{action}{Style.RESET_ALL}",
+                    f"{action_color}{decision.get('quantity', 0)}{Style.RESET_ALL}",
+                    f"{Fore.WHITE}{confidence_str}{Style.RESET_ALL}",
+                    f"{Fore.GREEN}{bullish_count}{Style.RESET_ALL}",
+                    f"{Fore.RED}{bearish_count}{Style.RESET_ALL}",
+                    f"{Fore.YELLOW}{neutral_count}{Style.RESET_ALL}",
+                ]
+            )
+
+        headers = [
+            f"{Fore.WHITE}Symbol",
+            f"{Fore.WHITE}Action",
+            f"{Fore.WHITE}Quantity",
+            f"{Fore.WHITE}Confidence",
+            f"{Fore.WHITE}Bullish",
+            f"{Fore.WHITE}Bearish",
+            f"{Fore.WHITE}Neutral",
+        ]
+
+        self._print(tabulate(portfolio_data, headers=headers, tablefmt="grid"))
 
     def print_backtest_results(self, table_rows: list) -> None:
         """

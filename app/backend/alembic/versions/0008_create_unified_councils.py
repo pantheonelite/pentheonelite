@@ -31,45 +31,56 @@ def upgrade() -> None:
     # Create new unified councils_v2 table
     op.create_table(
         "councils_v2",
+
         # Primary Key
         sa.Column("id", sa.Integer(), nullable=False),
+
         # Ownership & Visibility
         sa.Column("user_id", sa.Integer(), nullable=True),  # NULL for system councils (no FK until users table exists)
         sa.Column("is_system", sa.Boolean(), nullable=False, server_default="false"),
         sa.Column("is_public", sa.Boolean(), nullable=False, server_default="false"),
         sa.Column("is_template", sa.Boolean(), nullable=False, server_default="false"),
+
         # Basic Info
         sa.Column("name", sa.String(length=200), nullable=False),
         sa.Column("description", sa.Text(), nullable=True),
         sa.Column("strategy", sa.String(length=100), nullable=True),
         sa.Column("tags", postgresql.ARRAY(sa.String()), nullable=True),
+
         # Configuration (from hedge_fund_flows)
         sa.Column("agents", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
         sa.Column("connections", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
         sa.Column("workflow_config", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
         sa.Column("visual_layout", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+
         # Trading Settings
         sa.Column("initial_capital", sa.Numeric(precision=20, scale=2), nullable=False, server_default="100000"),
         sa.Column("risk_settings", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+
         # Performance Tracking (from councils)
         sa.Column("current_capital", sa.Numeric(precision=20, scale=2), nullable=True),
         sa.Column("total_pnl", sa.Numeric(precision=20, scale=2), nullable=True),
         sa.Column("total_pnl_percentage", sa.Numeric(precision=10, scale=4), nullable=True),
         sa.Column("win_rate", sa.Numeric(precision=5, scale=2), nullable=True),
         sa.Column("total_trades", sa.Integer(), nullable=True, server_default="0"),
+
         # Status
         sa.Column("status", sa.String(length=50), nullable=False, server_default="draft"),
         sa.Column("is_active", sa.Boolean(), nullable=False, server_default="true"),
+
         # Metadata
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("last_executed_at", sa.DateTime(timezone=True), nullable=True),
+
         # Analytics
         sa.Column("view_count", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("fork_count", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("forked_from_id", sa.Integer(), nullable=True),
+
         # Additional metadata
         sa.Column("meta_data", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+
         # Constraints
         sa.PrimaryKeyConstraint("id"),
         # Note: user_id FK will be added after users table is created (in auth migration)
@@ -90,17 +101,20 @@ def upgrade() -> None:
         "councils_v2",
         ["user_id", "name"],
         unique=True,
-        postgresql_where=sa.text("user_id IS NOT NULL"),
+        postgresql_where=sa.text("user_id IS NOT NULL")
     )
 
     # Create new council_runs_v2 table (replaces hedge_fund_flow_runs)
     op.create_table(
         "council_runs_v2",
+
         # Primary Key
         sa.Column("id", sa.Integer(), nullable=False),
+
         # References
         sa.Column("council_id", sa.Integer(), nullable=False),
         sa.Column("user_id", sa.Integer(), nullable=False),
+
         # Execution Config
         sa.Column("trading_mode", sa.String(length=50), nullable=False, server_default="backtest"),
         sa.Column("symbols", postgresql.ARRAY(sa.String()), nullable=True),
@@ -108,10 +122,12 @@ def upgrade() -> None:
         sa.Column("end_date", sa.Date(), nullable=True),
         sa.Column("schedule", sa.String(length=50), nullable=True),
         sa.Column("duration", sa.String(length=50), nullable=True),
+
         # Status
         sa.Column("status", sa.String(length=50), nullable=False, server_default="IDLE"),
         sa.Column("started_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
+
         # Results
         sa.Column("request_data", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
         sa.Column("initial_portfolio", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
@@ -119,10 +135,12 @@ def upgrade() -> None:
         sa.Column("performance_metrics", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
         sa.Column("results", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
         sa.Column("error_message", sa.Text(), nullable=True),
+
         # Metadata
         sa.Column("run_number", sa.Integer(), nullable=False, server_default="1"),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
+
         # Constraints
         sa.PrimaryKeyConstraint("id"),
         sa.ForeignKeyConstraint(["council_id"], ["councils_v2.id"], ondelete="CASCADE"),
@@ -139,15 +157,19 @@ def upgrade() -> None:
     # Create council_run_cycles_v2 table (replaces hedge_fund_flow_run_cycles)
     op.create_table(
         "council_run_cycles_v2",
+
         # Primary Key
         sa.Column("id", sa.Integer(), nullable=False),
+
         # References
         sa.Column("council_run_id", sa.Integer(), nullable=False),
         sa.Column("cycle_number", sa.Integer(), nullable=False),
+
         # Timing
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
         sa.Column("started_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
+
         # Data
         sa.Column("analyst_signals", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
         sa.Column("trading_decisions", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
@@ -155,14 +177,17 @@ def upgrade() -> None:
         sa.Column("portfolio_snapshot", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
         sa.Column("performance_metrics", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
         sa.Column("market_conditions", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+
         # Status
         sa.Column("status", sa.String(length=50), nullable=False, server_default="IN_PROGRESS"),
         sa.Column("error_message", sa.Text(), nullable=True),
         sa.Column("trigger_reason", sa.String(length=100), nullable=True),
+
         # Metrics
         sa.Column("llm_calls_count", sa.Integer(), nullable=True, server_default="0"),
         sa.Column("api_calls_count", sa.Integer(), nullable=True, server_default="0"),
         sa.Column("estimated_cost", sa.String(length=20), nullable=True),
+
         # Constraints
         sa.PrimaryKeyConstraint("id"),
         sa.ForeignKeyConstraint(["council_run_id"], ["council_runs_v2.id"], ondelete="CASCADE"),
@@ -180,7 +205,7 @@ def upgrade() -> None:
         "council_runs_v2",
         ["council_run_id"],
         ["id"],
-        ondelete="CASCADE",
+        ondelete="CASCADE"
     )
     op.create_index("idx_agent_debates_council_run_id", "agent_debates", ["council_run_id"])
 
@@ -193,7 +218,7 @@ def upgrade() -> None:
         "council_runs_v2",
         ["council_run_id"],
         ["id"],
-        ondelete="CASCADE",
+        ondelete="CASCADE"
     )
     # Note: user_id FK will be added after users table is created (in auth migration)
     # op.create_foreign_key(

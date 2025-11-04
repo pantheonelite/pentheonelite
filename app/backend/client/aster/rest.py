@@ -82,13 +82,22 @@ class AsterOrder(BaseModel):
 class AsterClient:
     """Aster REST API client wrapper."""
 
-    def __init__(self):
+    def __init__(self, api_key: str | None = None, api_secret: str | None = None):
         """
         Initialize Aster client.
 
         The client is initialized immediately and can be used directly
         or as a context manager for automatic cleanup.
+
+        Parameters
+        ----------
+        api_key : str | None
+            Custom API key. If None, uses global aster_settings
+        api_secret : str | None
+            Custom API secret. If None, uses global aster_settings
         """
+        self._api_key = api_key
+        self._api_secret = api_secret
         self._client = None
         self._initialize_client()
 
@@ -108,15 +117,22 @@ class AsterClient:
         """Initialize the Aster REST client."""
         try:
             if self._client is None:
+                # Use custom credentials if provided, otherwise fallback to global settings
+                api_key = self._api_key if self._api_key is not None else aster_settings.api_key
+                api_secret = self._api_secret if self._api_secret is not None else aster_settings.api_secret
+
                 self._client = AsterRestClient(
-                    key=aster_settings.api_key,
-                    secret=aster_settings.api_secret,
+                    key=api_key,
+                    secret=api_secret,
                     base_url=aster_settings.base_url,
                     timeout=aster_settings.timeout,
                     show_limit_usage=aster_settings.show_limit_usage,
                     show_header=aster_settings.show_header,
                 )
-                logger.info("Aster client initialized successfully")
+                if self._api_key is not None:
+                    logger.info("Aster client initialized with custom credentials")
+                else:
+                    logger.info("Aster client initialized with global settings")
         except Exception as e:
             raise RuntimeError(f"Failed to initialize Aster client: {e}") from e
 
@@ -231,6 +247,21 @@ class AsterClient:
         try:
             # Calculate appropriate limit based on date range
             if start_date and end_date:
+                start_dt = datetime.strptime(start_date, "%Y-%m-%d").replace(tzinfo=None)
+                end_dt = datetime.strptime(end_date, "%Y-%m-%d").replace(tzinfo=None)
+                days_diff = (end_dt - start_dt).days
+
+                # Calculate limit based on interval and date range
+                interval_hours = {
+                    "1m": 1 / 60,
+                    "5m": 5 / 60,
+                    "15m": 15 / 60,
+                    "30m": 30 / 60,
+                    "1h": 1,
+                    "4h": 4,
+                    "1d": 24,
+                }.get(interval, 1)
+
                 # For historical data, we need to request enough data to cover the full date range
                 # The Aster API returns the most recent klines, so we need to request enough
                 # to go back to the start date. For simplicity, always request 1000

@@ -1,16 +1,17 @@
 from datetime import datetime
 from decimal import Decimal
 
-from app.backend.db.models.consensus import ConsensusDecision
-
 # Import unified Council models
 from app.backend.db.models.council import Council, CouncilRun, CouncilRunCycle
+from app.backend.db.models.consensus import ConsensusDecision
 
 # Import new position-based models
 from app.backend.db.models.futures_position import FuturesPosition
+from app.backend.db.models.spot_holding import SpotHolding
 from app.backend.db.models.order import Order
 from app.backend.db.models.pnl_snapshot import PnLSnapshot
-from app.backend.db.models.spot_holding import SpotHolding
+from app.backend.db.models.wallet import Wallet
+
 from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.sql import func
 from sqlmodel import Field, SQLModel
@@ -509,4 +510,5 @@ __all__ = [
     "MarketOrder",
     "PortfolioHolding",
     "User",
+    "Wallet",
 ]

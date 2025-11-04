@@ -7,9 +7,8 @@ Create Date: 2025-11-01 00:03:00.000000
 Time-series PnL tracking for both futures positions and spot holdings.
 """
 
-import sqlalchemy as sa
-
 from alembic import op
+import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = "0022"
