@@ -121,6 +121,8 @@ class CouncilOverviewResponse(BaseModel):
     recent_debates: list[DebateMessage] | None = None
     recent_trades: list[TradeRecord] | None = None
     portfolio_holdings: dict[str, PortfolioHoldingDetail] | None = None
+    wallet_ca: str | None = None  # Contract Address from wallet
+    wallet_name: str | None = None  # Wallet name for display
 
 
 class GlobalActivityResponse(BaseModel):
@@ -171,3 +173,32 @@ class ActivePositionsResponse(BaseModel):
 
     positions: list[ActivePosition]
     total_unrealized_pnl: float
+
+
+class TotalAccountValueDataPoint(BaseModel):
+    """Total account value data point for a council."""
+
+    timestamp: datetime
+    total_value: float
+    change_dollar: float
+    change_percentage: float
+
+
+class CouncilAccountValueSeries(BaseModel):
+    """Account value time series for a single council."""
+
+    council_id: int
+    council_name: str
+    data_points: list[TotalAccountValueDataPoint]
+    current_value: float
+    change_dollar: float
+    change_percentage: float
+
+
+class TotalAccountValueResponse(BaseModel):
+    """Total account value response for all councils."""
+
+    councils: list[CouncilAccountValueSeries]
+    total_current_value: float
+    total_change_dollar: float
+    total_change_percentage: float

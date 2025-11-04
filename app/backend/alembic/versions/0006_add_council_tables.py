@@ -5,7 +5,6 @@ Revises: 0005
 Create Date: 2025-01-25 12:00:00.000000
 
 """
-
 import sqlalchemy as sa
 
 from alembic import op
@@ -19,8 +18,7 @@ depends_on = None
 
 def upgrade() -> None:
     # Create councils table
-    op.create_table(
-        "councils",
+    op.create_table("councils",
         sa.Column("id", sa.Integer(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=True),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
@@ -36,15 +34,14 @@ def upgrade() -> None:
         sa.Column("win_rate", sa.Numeric(precision=5, scale=2), nullable=True),
         sa.Column("total_trades", sa.Integer(), server_default="0", nullable=True),
         sa.Column("meta_data", sa.JSON(), nullable=True),
-        sa.PrimaryKeyConstraint("id"),
+        sa.PrimaryKeyConstraint("id")
     )
     op.create_index(op.f("ix_councils_id"), "councils", ["id"], unique=False)
     op.create_index(op.f("ix_councils_name"), "councils", ["name"], unique=True)
     op.create_index(op.f("ix_councils_is_default"), "councils", ["is_default"], unique=False)
 
     # Create council_agents table
-    op.create_table(
-        "council_agents",
+    op.create_table("council_agents",
         sa.Column("id", sa.Integer(), nullable=False),
         sa.Column("council_id", sa.Integer(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=True),
@@ -56,14 +53,13 @@ def upgrade() -> None:
         sa.Column("is_active", sa.Boolean(), server_default="true", nullable=False),
         sa.Column("meta_data", sa.JSON(), nullable=True),
         sa.ForeignKeyConstraint(["council_id"], ["councils.id"], ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("id"),
+        sa.PrimaryKeyConstraint("id")
     )
     op.create_index(op.f("ix_council_agents_id"), "council_agents", ["id"], unique=False)
     op.create_index(op.f("ix_council_agents_council_id"), "council_agents", ["council_id"], unique=False)
 
     # Create agent_debates table
-    op.create_table(
-        "agent_debates",
+    op.create_table("agent_debates",
         sa.Column("id", sa.Integer(), nullable=False),
         sa.Column("council_id", sa.Integer(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=True),
@@ -76,7 +72,7 @@ def upgrade() -> None:
         sa.Column("debate_round", sa.Integer(), nullable=True),
         sa.Column("meta_data", sa.JSON(), nullable=True),
         sa.ForeignKeyConstraint(["council_id"], ["councils.id"], ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("id"),
+        sa.PrimaryKeyConstraint("id")
     )
     op.create_index(op.f("ix_agent_debates_id"), "agent_debates", ["id"], unique=False)
     op.create_index(op.f("ix_agent_debates_council_id"), "agent_debates", ["council_id"], unique=False)
@@ -84,8 +80,7 @@ def upgrade() -> None:
     op.create_index(op.f("ix_agent_debates_market_symbol"), "agent_debates", ["market_symbol"], unique=False)
 
     # Create market_orders table
-    op.create_table(
-        "market_orders",
+    op.create_table("market_orders",
         sa.Column("id", sa.Integer(), nullable=False),
         sa.Column("council_id", sa.Integer(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=True),
@@ -106,7 +101,7 @@ def upgrade() -> None:
         sa.Column("notes", sa.Text(), nullable=True),
         sa.Column("meta_data", sa.JSON(), nullable=True),
         sa.ForeignKeyConstraint(["council_id"], ["councils.id"], ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("id"),
+        sa.PrimaryKeyConstraint("id")
     )
     op.create_index(op.f("ix_market_orders_id"), "market_orders", ["id"], unique=False)
     op.create_index(op.f("ix_market_orders_council_id"), "market_orders", ["council_id"], unique=False)
@@ -115,8 +110,7 @@ def upgrade() -> None:
     op.create_index(op.f("ix_market_orders_status"), "market_orders", ["status"], unique=False)
 
     # Create council_performance table
-    op.create_table(
-        "council_performance",
+    op.create_table("council_performance",
         sa.Column("id", sa.Integer(), nullable=False),
         sa.Column("council_id", sa.Integer(), nullable=False),
         sa.Column("timestamp", sa.DateTime(timezone=True), nullable=False),
@@ -128,7 +122,7 @@ def upgrade() -> None:
         sa.Column("open_positions", sa.Integer(), server_default="0", nullable=False),
         sa.Column("meta_data", sa.JSON(), nullable=True),
         sa.ForeignKeyConstraint(["council_id"], ["councils.id"], ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("id"),
+        sa.PrimaryKeyConstraint("id")
     )
     op.create_index(op.f("ix_council_performance_id"), "council_performance", ["id"], unique=False)
     op.create_index(op.f("ix_council_performance_council_id"), "council_performance", ["council_id"], unique=False)

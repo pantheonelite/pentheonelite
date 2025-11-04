@@ -16,6 +16,7 @@ from app.backend.db.models import (
     HedgeFundFlowRunCycle,
     MarketOrder,
     PortfolioHolding,
+    Wallet,
 )
 from app.backend.db.repositories.api_key_repository import ApiKeyRepository
 from app.backend.db.repositories.base_repository import AbstractSqlRepository, ModelType
@@ -23,6 +24,7 @@ from app.backend.db.repositories.council_repository import CouncilRepository
 from app.backend.db.repositories.flow_repository import FlowRepository
 from app.backend.db.repositories.flow_run_cycle_repository import FlowRunCycleRepository
 from app.backend.db.repositories.flow_run_repository import FlowRunRepository
+from app.backend.db.repositories.wallet_repository import WalletRepository
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -37,6 +39,7 @@ class UnitOfWork(Generic[ModelType]):
             ApiKey.__name__: ApiKeyRepository,
             # Councils domain - use CouncilRepository only for Council
             Council.__name__: CouncilRepository,
+            Wallet.__name__: WalletRepository,
         },
     )
 
@@ -107,6 +110,9 @@ class UnitOfWork(Generic[ModelType]):
 
     @overload
     def get_repository(self, model: type[Council]) -> CouncilRepository: ...
+
+    @overload
+    def get_repository(self, model: type[Wallet]) -> WalletRepository: ...
 
     # Generic repository overloads
     @overload

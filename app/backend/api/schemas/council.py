@@ -19,8 +19,13 @@ class CouncilCreateRequest(BaseModel):
     tags: list[str] | None = Field(None, description="Tags for categorization")
     initial_capital: float = Field(100000, description="Starting capital")
     risk_settings: dict | None = Field(None, description="Risk management")
-    is_public: bool = Field(default=False, description="Make publicly visible")
-    is_template: bool = Field(default=False, description="Can be used as template")
+    is_public: bool = Field(False, description="Make publicly visible")
+    is_template: bool = Field(False, description="Can be used as template")
+    # Wallet fields (optional)
+    exchange: str | None = Field(None, description="Exchange name (e.g., 'binance', 'aster')")
+    api_key: str | None = Field(None, description="API key for wallet")
+    secret_key: str | None = Field(None, description="Secret key for wallet")
+    ca: str | None = Field(None, description="Contract address for wallet")
 
 
 class CouncilUpdateRequest(BaseModel):
@@ -52,6 +57,7 @@ class CouncilResponse(BaseModel):
 
     id: int
     user_id: int | None
+    wallet_id: int | None
     is_system: bool
     is_public: bool
     is_template: bool
@@ -86,6 +92,7 @@ class CouncilSummaryResponse(BaseModel):
 
     id: int
     user_id: int | None
+    wallet_id: int | None
     is_system: bool
     is_public: bool
     is_template: bool

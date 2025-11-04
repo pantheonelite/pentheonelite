@@ -14,6 +14,11 @@ WARNING: This is DESTRUCTIVE and should only be used for local testing!
 
 import asyncio
 import sys
+from pathlib import Path
+
+# Add project root to Python path
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
 
 import structlog
 from sqlalchemy import delete, select
@@ -27,9 +32,9 @@ from app.backend.db.models import (
 )
 from app.backend.db.models.council import CouncilRun, CouncilRunCycle
 from app.backend.db.models.futures_position import FuturesPosition
+from app.backend.db.models.spot_holding import SpotHolding
 from app.backend.db.models.order import Order
 from app.backend.db.models.pnl_snapshot import PnLSnapshot
-from app.backend.db.models.spot_holding import SpotHolding
 from app.backend.db.session_manager import session_manager
 from app.backend.db.uow import UnitOfWork
 
@@ -87,19 +92,13 @@ async def get_data_counts(session):
 
     # Count DEPRECATED tables (might not exist or be renamed)
     counts["market_orders_deprecated"] = await safe_count(MarketOrder, "market_orders")
-    counts["portfolio_holdings_deprecated"] = await safe_count(
-        PortfolioHolding, "portfolio_holdings"
-    )
+    counts["portfolio_holdings_deprecated"] = await safe_count(PortfolioHolding, "portfolio_holdings")
 
     # Count other tables
     counts["council_runs"] = await safe_count(CouncilRun, "council_runs")
-    counts["council_run_cycles"] = await safe_count(
-        CouncilRunCycle, "council_run_cycles"
-    )
+    counts["council_run_cycles"] = await safe_count(CouncilRunCycle, "council_run_cycles")
     counts["agent_debates"] = await safe_count(AgentDebate, "agent_debates")
-    counts["council_performance"] = await safe_count(
-        CouncilPerformance, "council_performance"
-    )
+    counts["council_performance"] = await safe_count(CouncilPerformance, "council_performance")
 
     return counts
 
@@ -130,9 +129,7 @@ async def delete_all_council_data():
             async def safe_delete(model, name):
                 try:
                     result = await session.execute(delete(model))
-                    await (
-                        session.commit()
-                    )  # Commit after each delete to avoid transaction issues
+                    await session.commit()  # Commit after each delete to avoid transaction issues
                     count = result.rowcount
                     logger.info(f"Deleted {count} {name}")
                     return count
@@ -142,22 +139,16 @@ async def delete_all_council_data():
                     return 0
 
             # Delete in reverse order of dependencies
-            await safe_delete(PnLSnapshot, "PnL snapshots")
-            await safe_delete(Order, "orders")
-            await safe_delete(FuturesPosition, "futures positions")
-            await safe_delete(SpotHolding, "spot holdings")
+            deleted_pnl = await safe_delete(PnLSnapshot, "PnL snapshots")
+            deleted_new_orders = await safe_delete(Order, "orders")
+            deleted_futures = await safe_delete(FuturesPosition, "futures positions")
+            deleted_spot = await safe_delete(SpotHolding, "spot holdings")
             deleted_cycles = await safe_delete(CouncilRunCycle, "council run cycles")
             deleted_runs = await safe_delete(CouncilRun, "council runs")
             deleted_debates = await safe_delete(AgentDebate, "agent debates")
-            deleted_performance = await safe_delete(
-                CouncilPerformance, "council performance"
-            )
-            deleted_orders = await safe_delete(
-                MarketOrder, "market orders (deprecated)"
-            )
-            deleted_holdings = await safe_delete(
-                PortfolioHolding, "portfolio holdings (deprecated)"
-            )
+            deleted_performance = await safe_delete(CouncilPerformance, "council performance")
+            deleted_orders = await safe_delete(MarketOrder, "market orders (deprecated)")
+            deleted_holdings = await safe_delete(PortfolioHolding, "portfolio holdings (deprecated)")
             deleted_councils = await safe_delete(Council, "councils")
 
             # Commit all deletions

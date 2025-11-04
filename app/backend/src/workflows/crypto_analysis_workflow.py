@@ -42,10 +42,9 @@ def fetch_crypto_price(state: CryptoAnalysisState) -> CryptoAnalysisState:
         symbol = state["symbol"]
         result = aster_get_price(symbol, "aster")
         price_data = json.loads(result)
+        return {**state, "price_data": price_data, "error": None}
     except Exception as e:
         return {**state, "error": f"Error fetching price data: {e!s}"}
-    else:
-        return {**state, "price_data": price_data, "error": None}
 
 
 def fetch_historical_data(state: CryptoAnalysisState) -> CryptoAnalysisState:
@@ -54,10 +53,9 @@ def fetch_historical_data(state: CryptoAnalysisState) -> CryptoAnalysisState:
         symbol = state["symbol"]
         result = aster_get_history(symbol, "1h", 24, "aster")
         historical_data = json.loads(result)
+        return {**state, "historical_data": historical_data, "error": None}
     except Exception as e:
         return {**state, "error": f"Error fetching historical data: {e!s}"}
-    else:
-        return {**state, "historical_data": historical_data, "error": None}
 
 
 def fetch_crypto_news(state: CryptoAnalysisState) -> CryptoAnalysisState:
@@ -73,55 +71,100 @@ def fetch_crypto_news(state: CryptoAnalysisState) -> CryptoAnalysisState:
 
 
 def analyze_price_trend(state: CryptoAnalysisState) -> CryptoAnalysisState:
-    """Analyze price trend for the symbol."""
+    """Analyze price trends."""
     try:
         symbol = state["symbol"]
         result = price_trend_analysis(symbol, "1h", 24, "aster")
         trend_analysis = json.loads(result)
+        return {**state, "trend_analysis": trend_analysis, "error": None}
     except Exception as e:
         return {**state, "error": f"Error analyzing price trend: {e!s}"}
-    else:
-        return {**state, "trend_analysis": trend_analysis, "error": None}
 
 
 def analyze_volume(state: CryptoAnalysisState) -> CryptoAnalysisState:
-    """Analyze volume profile for the symbol."""
+    """Analyze trading volume."""
     try:
         symbol = state["symbol"]
         result = volume_analysis(symbol, "1h", 24, "aster")
         volume_analysis_data = json.loads(result)
+        return {**state, "volume_analysis": volume_analysis_data, "error": None}
     except Exception as e:
         return {**state, "error": f"Error analyzing volume: {e!s}"}
-    else:
-        return {**state, "volume_analysis": volume_analysis_data, "error": None}
 
 
 def analyze_sentiment(state: CryptoAnalysisState) -> CryptoAnalysisState:
-    """Analyze social/news sentiment for the symbol."""
+    """Analyze crypto sentiment."""
     try:
         symbol = state["symbol"]
         result = crypto_sentiment_analysis(symbol, "1h", 24, "aster")
         sentiment_analysis_data = json.loads(result)
+        return {**state, "sentiment_analysis": sentiment_analysis_data, "error": None}
     except Exception as e:
         return {**state, "error": f"Error analyzing sentiment: {e!s}"}
-    else:
-        return {**state, "sentiment_analysis": sentiment_analysis_data, "error": None}
 
 
 def generate_final_analysis(state: CryptoAnalysisState) -> CryptoAnalysisState:
-    """Generate final analysis summary."""
+    """Generate final comprehensive analysis."""
     try:
-        summary_text = f"""
-Crypto Analysis for {state["symbol"]}
+        symbol = state["symbol"]
+        analysis_type = state["analysis_type"]
 
-Trend: {state.get("trend_analysis")}
-Volume: {state.get("volume_analysis")}
-Sentiment: {state.get("sentiment_analysis")}
-            """.strip()
+        # Compile all analysis results
+        analysis_summary = {
+            "symbol": symbol,
+            "analysis_type": analysis_type,
+            "timestamp": datetime.now().isoformat(),
+            "price_data": state.get("price_data"),
+            "trend_analysis": state.get("trend_analysis"),
+            "volume_analysis": state.get("volume_analysis"),
+            "sentiment_analysis": state.get("sentiment_analysis"),
+            "news_count": len(state.get("news_data", [])),
+        }
+
+        # Generate summary text
+        # Extract data safely
+        price_data = analysis_summary.get("price_data", {})
+        trend_data = analysis_summary.get("trend_analysis", {})
+        volume_data = analysis_summary.get("volume_analysis", {})
+        sentiment_data = analysis_summary.get("sentiment_analysis", {})
+
+        current_price = price_data.get("price", "N/A") if price_data else "N/A"
+        price_change_24h = price_data.get("change_percent_24h", "N/A") if price_data else "N/A"
+        trend = trend_data.get("trend", "N/A") if trend_data else "N/A"
+        trend_change = trend_data.get("price_change_percent", "N/A") if trend_data else "N/A"
+        volume_trend = volume_data.get("volume_trend", "N/A") if volume_data else "N/A"
+        volume_ratio = volume_data.get("volume_metrics", {}).get("volume_ratio", "N/A") if volume_data else "N/A"
+        sentiment_label = sentiment_data.get("sentiment_label", "N/A") if sentiment_data else "N/A"
+        sentiment_score = sentiment_data.get("sentiment_score", "N/A") if sentiment_data else "N/A"
+
+        summary_text = f"""
+Crypto Analysis Report for {symbol}
+
+Price Data:
+- Current Price: ${current_price}
+- 24h Change: {price_change_24h}%
+
+Trend Analysis:
+- Trend: {trend}
+- Price Change: {trend_change}%
+
+Volume Analysis:
+- Volume Trend: {volume_trend}
+- Volume Ratio: {volume_ratio}
+
+Sentiment Analysis:
+- Sentiment: {sentiment_label}
+- Sentiment Score: {sentiment_score}
+
+News Coverage:
+- Articles Found: {analysis_summary["news_count"]}
+
+Analysis completed at: {analysis_summary["timestamp"]}
+        """.strip()
+
+        return {**state, "final_analysis": summary_text, "error": None}
     except Exception as e:
         return {**state, "error": f"Error generating final analysis: {e!s}"}
-    else:
-        return {**state, "final_analysis": summary_text, "error": None}
 
 
 def should_continue_analysis(state: CryptoAnalysisState) -> str:
@@ -194,10 +237,10 @@ def create_news_sentiment_workflow():
                 result = crypto_sentiment(text, state["symbol"])
                 sentiment_data = json.loads(result)
                 sentiment_results.append({"article": article, "sentiment": sentiment_data})
+
+            return {**state, "sentiment_results": sentiment_results, "error": None}
         except Exception as e:
             return {**state, "error": f"Error analyzing sentiment: {e!s}"}
-        else:
-            return {**state, "sentiment_results": sentiment_results, "error": None}
 
     def generate_sentiment_summary(state: NewsSentimentState) -> NewsSentimentState:
         """Generate sentiment summary."""
@@ -238,10 +281,10 @@ Average Sentiment: {"Positive" if avg_sentiment > 0.1 else "Negative" if avg_sen
 
 Analysis completed at: {datetime.now().isoformat()}
             """.strip()
+
+            return {**state, "final_sentiment": summary, "error": None}
         except Exception as e:
             return {**state, "error": f"Error generating sentiment summary: {e!s}"}
-        else:
-            return {**state, "final_sentiment": summary, "error": None}
 
     # Create workflow
     workflow = StateGraph(NewsSentimentState)
@@ -299,7 +342,6 @@ if __name__ == "__main__":
     import asyncio
 
     async def main():
-        """Run demo analyses for crypto and sentiment workflows."""
         # Run crypto analysis
         logger.info("Running crypto analysis for BTC/USDT...")
         result = await run_crypto_analysis("BTC/USDT")

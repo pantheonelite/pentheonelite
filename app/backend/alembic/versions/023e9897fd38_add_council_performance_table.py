@@ -113,9 +113,7 @@ def upgrade() -> None:
         )
         safe_drop_index(op.f("idx_council_run_cycles_v2_run_id"), table_name="council_run_cycles_v2")
         safe_drop_index(op.f("idx_council_run_cycles_v2_status"), table_name="council_run_cycles_v2")
-        safe_create_index(
-            op.f("ix_council_run_cycles_v2_council_run_id"), "council_run_cycles_v2", ["council_run_id"], unique=False
-        )
+        safe_create_index(op.f("ix_council_run_cycles_v2_council_run_id"), "council_run_cycles_v2", ["council_run_id"], unique=False)
         safe_create_index(op.f("ix_council_run_cycles_v2_id"), "council_run_cycles_v2", ["id"], unique=False)
         safe_create_index(op.f("ix_council_run_cycles_v2_status"), "council_run_cycles_v2", ["status"], unique=False)
     # Council runs changes
@@ -187,9 +185,7 @@ def upgrade() -> None:
         safe_drop_constraint(op.f("fk_market_orders_council_run_id"), "market_orders", type_="foreignkey")
 
         # Add new foreign key to councils
-        if column_exists("market_orders", "council_id") and not foreign_key_exists(
-            "market_orders", "council_id", "councils"
-        ):
+        if column_exists("market_orders", "council_id") and not foreign_key_exists("market_orders", "council_id", "councils"):
             op.create_foreign_key(None, "market_orders", "councils", ["council_id"], ["id"], ondelete="CASCADE")
 
         # Drop old columns
@@ -236,83 +232,48 @@ def downgrade() -> None:
     op.create_index(op.f("idx_users_wallet_address"), "users", ["wallet_address"], unique=True)
     op.create_index(op.f("idx_users_email"), "users", ["email"], unique=True)
     op.drop_index(op.f("ix_portfolio_holdings_id"), table_name="portfolio_holdings")
-    op.create_unique_constraint(
-        op.f("uq_council_symbol"), "portfolio_holdings", ["council_id", "symbol"], postgresql_nulls_not_distinct=False
-    )
-    op.alter_column(
-        "portfolio_holdings",
-        "updated_at",
-        existing_type=postgresql.TIMESTAMP(timezone=True),
-        nullable=False,
-        existing_server_default=sa.text("now()"),
-    )
-    op.alter_column(
-        "portfolio_holdings",
-        "created_at",
-        existing_type=postgresql.TIMESTAMP(timezone=True),
-        nullable=False,
-        existing_server_default=sa.text("now()"),
-    )
+    op.create_unique_constraint(op.f("uq_council_symbol"), "portfolio_holdings", ["council_id", "symbol"], postgresql_nulls_not_distinct=False)
+    op.alter_column("portfolio_holdings", "updated_at",
+               existing_type=postgresql.TIMESTAMP(timezone=True),
+               nullable=False,
+               existing_server_default=sa.text("now()"))
+    op.alter_column("portfolio_holdings", "created_at",
+               existing_type=postgresql.TIMESTAMP(timezone=True),
+               nullable=False,
+               existing_server_default=sa.text("now()"))
     op.add_column("market_orders", sa.Column("user_id", sa.INTEGER(), autoincrement=False, nullable=True))
-    op.add_column(
-        "market_orders", sa.Column("aster_order_id", sa.VARCHAR(length=100), autoincrement=False, nullable=True)
-    )
+    op.add_column("market_orders", sa.Column("aster_order_id", sa.VARCHAR(length=100), autoincrement=False, nullable=True))
     op.add_column("market_orders", sa.Column("council_run_id", sa.INTEGER(), autoincrement=False, nullable=True))
     op.drop_constraint(None, "market_orders", type_="foreignkey")
-    op.create_foreign_key(
-        op.f("fk_market_orders_council_run_id"),
-        "market_orders",
-        "council_runs_v2",
-        ["council_run_id"],
-        ["id"],
-        ondelete="CASCADE",
-    )
-    op.create_foreign_key(
-        op.f("fk_market_orders_user_id"), "market_orders", "users", ["user_id"], ["id"], ondelete="CASCADE"
-    )
+    op.create_foreign_key(op.f("fk_market_orders_council_run_id"), "market_orders", "council_runs_v2", ["council_run_id"], ["id"], ondelete="CASCADE")
+    op.create_foreign_key(op.f("fk_market_orders_user_id"), "market_orders", "users", ["user_id"], ["id"], ondelete="CASCADE")
     op.create_index(op.f("ix_market_orders_aster_order_id"), "market_orders", ["aster_order_id"], unique=False)
     op.create_index(op.f("idx_market_orders_user_id"), "market_orders", ["user_id"], unique=False)
     op.create_index(op.f("idx_market_orders_council_run_id"), "market_orders", ["council_run_id"], unique=False)
-    op.alter_column("hedge_fund_flows", "is_template", existing_type=sa.BOOLEAN(), nullable=True)
+    op.alter_column("hedge_fund_flows", "is_template",
+               existing_type=sa.BOOLEAN(),
+               nullable=True)
     op.drop_constraint(None, "hedge_fund_flow_runs", type_="foreignkey")
     op.drop_constraint(None, "hedge_fund_flow_run_cycles", type_="foreignkey")
-    op.create_index(
-        op.f("ix_hedge_fund_flow_run_cycles_status"), "hedge_fund_flow_run_cycles", ["status"], unique=False
-    )
-    op.create_index(
-        op.f("ix_hedge_fund_flow_run_cycles_started_at"), "hedge_fund_flow_run_cycles", ["started_at"], unique=False
-    )
-    op.create_index(
-        op.f("ix_hedge_fund_flow_run_cycles_cycle_number"),
-        "hedge_fund_flow_run_cycles",
-        ["cycle_number"],
-        unique=False,
-    )
+    op.create_index(op.f("ix_hedge_fund_flow_run_cycles_status"), "hedge_fund_flow_run_cycles", ["status"], unique=False)
+    op.create_index(op.f("ix_hedge_fund_flow_run_cycles_started_at"), "hedge_fund_flow_run_cycles", ["started_at"], unique=False)
+    op.create_index(op.f("ix_hedge_fund_flow_run_cycles_cycle_number"), "hedge_fund_flow_run_cycles", ["cycle_number"], unique=False)
     op.drop_index(op.f("ix_councils_user_id"), table_name="councils")
     op.drop_index(op.f("ix_councils_is_system"), table_name="councils")
     op.drop_index(op.f("ix_councils_is_public"), table_name="councils")
     op.drop_index(op.f("ix_councils_id"), table_name="councils")
     op.drop_index(op.f("ix_councils_forked_from_id"), table_name="councils")
     op.create_index(op.f("ix_councils_v2_system_status"), "councils", ["is_system", "status"], unique=False)
-    op.create_index(
-        op.f("idx_councils_v2_user_name_unique"),
-        "councils",
-        ["user_id", "name"],
-        unique=True,
-        postgresql_where="(user_id IS NOT NULL)",
-    )
+    op.create_index(op.f("idx_councils_v2_user_name_unique"), "councils", ["user_id", "name"], unique=True, postgresql_where="(user_id IS NOT NULL)")
     op.create_index(op.f("idx_councils_v2_user_id"), "councils", ["user_id"], unique=False)
     op.create_index(op.f("idx_councils_v2_status"), "councils", ["status"], unique=False)
     op.create_index(op.f("idx_councils_v2_is_system"), "councils", ["is_system"], unique=False)
     op.create_index(op.f("idx_councils_v2_is_public"), "councils", ["is_public"], unique=False)
     op.create_index(op.f("idx_councils_v2_forked_from_id"), "councils", ["forked_from_id"], unique=False)
-    op.alter_column(
-        "councils",
-        "created_at",
-        existing_type=postgresql.TIMESTAMP(timezone=True),
-        nullable=False,
-        existing_server_default=sa.text("now()"),
-    )
+    op.alter_column("councils", "created_at",
+               existing_type=postgresql.TIMESTAMP(timezone=True),
+               nullable=False,
+               existing_server_default=sa.text("now()"))
     op.drop_index(op.f("ix_council_runs_v2_user_id"), table_name="council_runs_v2")
     op.drop_index(op.f("ix_council_runs_v2_trading_mode"), table_name="council_runs_v2")
     op.drop_index(op.f("ix_council_runs_v2_status"), table_name="council_runs_v2")
@@ -322,44 +283,24 @@ def downgrade() -> None:
     op.create_index(op.f("idx_council_runs_v2_trading_mode"), "council_runs_v2", ["trading_mode"], unique=False)
     op.create_index(op.f("idx_council_runs_v2_status"), "council_runs_v2", ["status"], unique=False)
     op.create_index(op.f("idx_council_runs_v2_council_id"), "council_runs_v2", ["council_id"], unique=False)
-    op.alter_column(
-        "council_runs_v2",
-        "created_at",
-        existing_type=postgresql.TIMESTAMP(timezone=True),
-        nullable=False,
-        existing_server_default=sa.text("now()"),
-    )
+    op.alter_column("council_runs_v2", "created_at",
+               existing_type=postgresql.TIMESTAMP(timezone=True),
+               nullable=False,
+               existing_server_default=sa.text("now()"))
     op.drop_index(op.f("ix_council_run_cycles_v2_status"), table_name="council_run_cycles_v2")
     op.drop_index(op.f("ix_council_run_cycles_v2_id"), table_name="council_run_cycles_v2")
     op.drop_index(op.f("ix_council_run_cycles_v2_council_run_id"), table_name="council_run_cycles_v2")
     op.create_index(op.f("idx_council_run_cycles_v2_status"), "council_run_cycles_v2", ["status"], unique=False)
-    op.create_index(
-        op.f("idx_council_run_cycles_v2_run_id"), "council_run_cycles_v2", ["council_run_id"], unique=False
-    )
-    op.alter_column(
-        "council_run_cycles_v2",
-        "created_at",
-        existing_type=postgresql.TIMESTAMP(timezone=True),
-        nullable=False,
-        existing_server_default=sa.text("now()"),
-    )
-    op.create_index(
-        op.f("ix_consensus_decisions_decision_created_at"),
-        "consensus_decisions",
-        ["decision", "created_at"],
-        unique=False,
-    )
-    op.create_index(
-        op.f("ix_consensus_decisions_council_id_created_at"),
-        "consensus_decisions",
-        ["council_id", "created_at"],
-        unique=False,
-    )
+    op.create_index(op.f("idx_council_run_cycles_v2_run_id"), "council_run_cycles_v2", ["council_run_id"], unique=False)
+    op.alter_column("council_run_cycles_v2", "created_at",
+               existing_type=postgresql.TIMESTAMP(timezone=True),
+               nullable=False,
+               existing_server_default=sa.text("now()"))
+    op.create_index(op.f("ix_consensus_decisions_decision_created_at"), "consensus_decisions", ["decision", "created_at"], unique=False)
+    op.create_index(op.f("ix_consensus_decisions_council_id_created_at"), "consensus_decisions", ["council_id", "created_at"], unique=False)
     op.drop_index(op.f("ix_api_keys_provider"), table_name="api_keys")
     op.create_index(op.f("ix_api_keys_provider"), "api_keys", ["provider"], unique=False)
-    op.create_unique_constraint(
-        op.f("api_keys_provider_key"), "api_keys", ["provider"], postgresql_nulls_not_distinct=False
-    )
+    op.create_unique_constraint(op.f("api_keys_provider_key"), "api_keys", ["provider"], postgresql_nulls_not_distinct=False)
     op.drop_index(op.f("ix_council_performance_timestamp"), table_name="council_performance")
     op.drop_index(op.f("ix_council_performance_id"), table_name="council_performance")
     op.drop_index(op.f("ix_council_performance_council_id"), table_name="council_performance")

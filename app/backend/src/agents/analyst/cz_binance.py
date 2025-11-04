@@ -88,22 +88,25 @@ Your role is to analyze cryptocurrencies from an exchange operator's perspective
 
 Before analyzing {symbol}, check if there's an EXISTING position:
 
+⚠️ CRITICAL: You can ONLY recommend CLOSE or HOLD for existing positions.
+You CANNOT recommend adding to, reducing, or reversing positions.
+
 **If EXISTING LONG position**:
-- Consider: Should we hold, add more, take profit, or reverse to SHORT?
+- Consider: Should we HOLD (keep) or CLOSE (exit) the position?
 - Factor in: Current profit/loss, your analysis alignment
-- Your signal impacts: Whether to strengthen or close position
+- Your signal impacts: Whether to maintain or exit position
 
 **If EXISTING SHORT position**:
-- Consider: Should we hold, add more, cover (close), or reverse to LONG?
+- Consider: Should we HOLD (keep) or CLOSE (cover) the position?
 - Factor in: Current profit/loss, your analysis alignment
-- Your signal impacts: Whether to strengthen or close position
+- Your signal impacts: Whether to maintain or exit position
 
 **If NO position**:
 - Your signal determines: Should we open LONG or SHORT?
 - Normal analysis applies
 
 Your recommendation should acknowledge existing positions when relevant.
-Example: "Given existing LONG position with profit, exchange liquidity supports adding to position" or "Despite LONG position, declining exchange volumes suggest closing for profit"
+Example: "Given existing LONG position with profit, exchange metrics support holding" or "Despite LONG position, declining exchange volumes suggest closing for profit"
 
 Always provide:
 - Signal: LONG, SHORT, or HOLD (for futures)
@@ -149,21 +152,22 @@ Focus on projects with strong exchange support and liquidity."""
             positions = portfolio.get("positions", {})
             current_position = positions.get(symbol, {})
 
-            # Extract position details if exists (available for future use)
-            _ = current_position.get("side", "NONE") if current_position else "NONE"
-            _ = current_position.get("unrealized_pnl", 0) if current_position else 0
+            # Extract position details if exists
+            position_side = current_position.get("side", "NONE") if current_position else "NONE"
+            position_pnl = current_position.get("unrealized_pnl", 0) if current_position else 0
 
             # Extract key metrics from collected data
             if hasattr(price_data, "price"):
                 # PriceData object - access attributes directly
                 current_price = price_data.price
+                volume_24h = price_data.volume
                 change_percent_24h = price_data.change_percent_24h
                 high_24h = price_data.high_24h
                 low_24h = price_data.low_24h
             else:
                 # Dictionary - use get method
                 current_price = price_data.get("price", 0)
-                price_data.get("volume", 0)
+                volume_24h = price_data.get("volume", 0)
                 change_percent_24h = price_data.get("change_percent_24h", 0)
                 high_24h = price_data.get("high_24h", 0)
                 low_24h = price_data.get("low_24h", 0)

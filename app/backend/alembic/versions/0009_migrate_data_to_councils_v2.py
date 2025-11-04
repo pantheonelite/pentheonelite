@@ -41,8 +41,7 @@ def upgrade() -> None:
     # Step 1: Migrate old councils table → councils_v2 (system councils)
     print("Step 1: Migrating councils → councils_v2 (system councils)...")
 
-    conn.execute(
-        sa.text("""
+    conn.execute(sa.text("""
         INSERT INTO councils_v2 (
             user_id,
             is_system,
@@ -95,16 +94,14 @@ def upgrade() -> None:
             meta_data
         FROM councils
         WHERE id NOT IN (SELECT id FROM councils_v2)
-    """)
-    )
+    """))
 
     print("  ✓ Migrated councils to councils_v2 (system councils)")
 
     # Step 2: Migrate hedge_fund_flows → councils_v2 (user councils)
     print("Step 2: Migrating hedge_fund_flows → councils_v2 (user councils)...")
 
-    conn.execute(
-        sa.text("""
+    conn.execute(sa.text("""
         INSERT INTO councils_v2 (
             user_id,
             is_system,
@@ -147,8 +144,7 @@ def upgrade() -> None:
             END as tags
         FROM hedge_fund_flows
         WHERE id NOT IN (SELECT id FROM councils_v2 WHERE id <= (SELECT MAX(id) FROM hedge_fund_flows))
-    """)
-    )
+    """))
 
     print("  ✓ Migrated hedge_fund_flows to councils_v2 (user councils)")
 
@@ -166,11 +162,9 @@ def upgrade() -> None:
     # Step 4: Update sequences
     print("Step 4: Updating sequences...")
 
-    conn.execute(
-        sa.text("""
+    conn.execute(sa.text("""
         SELECT setval('councils_v2_id_seq', COALESCE((SELECT MAX(id) FROM councils_v2), 1), true)
-    """)
-    )
+    """))
 
     print("  ✓ Updated sequences")
 

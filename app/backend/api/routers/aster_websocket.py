@@ -98,91 +98,6 @@ class AsterWebSocketManager:
             logger.exception("Error sending to Aster WebSocket", error=str(e))
 
 
-# Module-level message handlers for trading control (to reduce endpoint complexity)
-async def _handle_start_aster_agents(manager: AsterWebSocketManager, websocket: WebSocket, data: dict) -> None:
-    request_data = data.get("data", {})
-    symbols = request_data.get("symbols", [])
-    agents = request_data.get("agents", [])
-    api_key = request_data.get("api_key")
-    api_secret = request_data.get("api_secret")
-
-    for agent_config in agents:
-        config = {
-            "name": agent_config["name"],
-            "description": agent_config.get("description", ""),
-            "persona": agent_config.get("persona", ""),
-        }
-
-        agent = AsterStreamingAnalystAgent(
-            config,
-            analysis_threshold=agent_config.get("analysis_threshold", 0.01),
-            min_analysis_interval=agent_config.get("min_analysis_interval", 30),
-            api_key=api_key,
-            api_secret=api_secret,
-        )
-
-        manager.aster_agents[config["name"]] = agent
-        await agent.start_streaming(symbols)
-        await agent.stream_signals_to_websocket(websocket)
-
-    await websocket.send_json(
-        {
-            "type": "aster_agents_started",
-            "symbols": symbols,
-            "agents": [agent["name"] for agent in agents],
-            "timestamp": datetime.now().isoformat(),
-        }
-    )
-
-
-async def _handle_stop_aster_agents(manager: AsterWebSocketManager, websocket: WebSocket) -> None:
-    for agent in manager.aster_agents.values():
-        await agent.stop_streaming()
-    manager.aster_agents.clear()
-    await websocket.send_json({"type": "aster_agents_stopped", "timestamp": datetime.now().isoformat()})
-
-
-async def _handle_get_status(manager: AsterWebSocketManager, websocket: WebSocket) -> None:
-    status = {}
-    for agent_id, agent in manager.aster_agents.items():
-        status[agent_id] = await agent.get_aster_streaming_status()
-    await websocket.send_json({"type": "aster_status", "status": status, "timestamp": datetime.now().isoformat()})
-
-
-async def _handle_add_aster_agent(manager: AsterWebSocketManager, websocket: WebSocket, data: dict) -> None:
-    agent_data = data.get("data", {})
-    config = {
-        "name": agent_data.get("name"),
-        "description": agent_data.get("description", ""),
-        "persona": agent_data.get("persona", ""),
-    }
-    symbols = agent_data.get("symbols", [])
-    api_key = agent_data.get("api_key")
-    api_secret = agent_data.get("api_secret")
-
-    agent = AsterStreamingAnalystAgent(config, api_key=api_key, api_secret=api_secret)
-    manager.aster_agents[config["name"]] = agent
-    await agent.start_streaming(symbols)
-    await agent.stream_signals_to_websocket(websocket)
-    await websocket.send_json(
-        {"type": "aster_agent_added", "agent_id": config["name"], "timestamp": datetime.now().isoformat()}
-    )
-
-
-async def _handle_remove_aster_agent(manager: AsterWebSocketManager, websocket: WebSocket, data: dict) -> None:
-    agent_id = data.get("agent_id")
-    if agent_id in manager.aster_agents:
-        await manager.aster_agents[agent_id].stop_streaming()
-        del manager.aster_agents[agent_id]
-        await websocket.send_json(
-            {"type": "aster_agent_removed", "agent_id": agent_id, "timestamp": datetime.now().isoformat()}
-        )
-
-
-async def _handle_ping(_manager: AsterWebSocketManager, websocket: WebSocket) -> None:
-    await websocket.send_json({"type": "pong", "timestamp": datetime.now().isoformat()})
-
-
 @router.websocket("/ws/aster/crypto-data/{symbol}")
 async def aster_crypto_data_stream(websocket: WebSocket, symbol: str):
     """
@@ -317,26 +232,115 @@ async def aster_trading_control_stream(websocket: WebSocket):
     channel = "aster_trading_control"
     await aster_websocket_manager.connect(websocket, channel)
 
-    handlers = {
-        "start_aster_agents": lambda payload: _handle_start_aster_agents(aster_websocket_manager, websocket, payload),
-        "stop_aster_agents": lambda _payload: _handle_stop_aster_agents(aster_websocket_manager, websocket),
-        "get_aster_status": lambda _payload: _handle_get_status(aster_websocket_manager, websocket),
-        "add_aster_agent": lambda payload: _handle_add_aster_agent(aster_websocket_manager, websocket, payload),
-        "remove_aster_agent": lambda payload: _handle_remove_aster_agent(aster_websocket_manager, websocket, payload),
-        "ping": lambda _payload: _handle_ping(aster_websocket_manager, websocket),
-    }
-
     try:
         while True:
             try:
                 message = await websocket.receive_text()
                 data = json.loads(message)
-                msg_type = data.get("type")
-                handler = handlers.get(msg_type)
-                if handler is not None:
-                    await handler(data)
-                else:
-                    await websocket.send_json({"type": "error", "message": "Unknown message type"})
+
+                if data.get("type") == "start_aster_agents":
+                    # Start Aster streaming agents
+                    request_data = data.get("data", {})
+                    symbols = request_data.get("symbols", [])
+                    agents = request_data.get("agents", [])
+                    api_key = request_data.get("api_key")
+                    api_secret = request_data.get("api_secret")
+
+                    for agent_config in agents:
+                        config = {
+                            "name": agent_config["name"],
+                            "description": agent_config.get("description", ""),
+                            "persona": agent_config.get("persona", ""),
+                        }
+
+                        agent = AsterStreamingAnalystAgent(
+                            config,
+                            analysis_threshold=agent_config.get("analysis_threshold", 0.01),
+                            min_analysis_interval=agent_config.get("min_analysis_interval", 30),
+                            api_key=api_key,
+                            api_secret=api_secret,
+                        )
+
+                        aster_websocket_manager.aster_agents[config["name"]] = agent
+                        await agent.start_streaming(symbols)
+
+                        # Subscribe agent signals to WebSocket
+                        await agent.stream_signals_to_websocket(websocket)
+
+                    await websocket.send_json(
+                        {
+                            "type": "aster_agents_started",
+                            "symbols": symbols,
+                            "agents": [agent["name"] for agent in agents],
+                            "timestamp": datetime.now().isoformat(),
+                        }
+                    )
+
+                elif data.get("type") == "stop_aster_agents":
+                    # Stop Aster streaming agents
+                    for agent in aster_websocket_manager.aster_agents.values():
+                        await agent.stop_streaming()
+
+                    aster_websocket_manager.aster_agents.clear()
+
+                    await websocket.send_json(
+                        {"type": "aster_agents_stopped", "timestamp": datetime.now().isoformat()}
+                    )
+
+                elif data.get("type") == "get_aster_status":
+                    # Get Aster agents status
+                    status = {}
+                    for agent_id, agent in aster_websocket_manager.aster_agents.items():
+                        status[agent_id] = await agent.get_aster_streaming_status()
+
+                    await websocket.send_json(
+                        {"type": "aster_status", "status": status, "timestamp": datetime.now().isoformat()}
+                    )
+
+                elif data.get("type") == "add_aster_agent":
+                    # Add a new Aster agent
+                    agent_data = data.get("data", {})
+                    config = {
+                        "name": agent_data.get("name"),
+                        "description": agent_data.get("description", ""),
+                        "persona": agent_data.get("persona", ""),
+                    }
+                    symbols = agent_data.get("symbols", [])
+                    api_key = agent_data.get("api_key")
+                    api_secret = agent_data.get("api_secret")
+
+                    agent = AsterStreamingAnalystAgent(config, api_key=api_key, api_secret=api_secret)
+
+                    aster_websocket_manager.aster_agents[config["name"]] = agent
+                    await agent.start_streaming(symbols)
+                    await agent.stream_signals_to_websocket(websocket)
+
+                    await websocket.send_json(
+                        {
+                            "type": "aster_agent_added",
+                            "agent_id": config["name"],
+                            "timestamp": datetime.now().isoformat(),
+                        }
+                    )
+
+                elif data.get("type") == "remove_aster_agent":
+                    # Remove an Aster agent
+                    agent_id = data.get("agent_id")
+                    if agent_id in aster_websocket_manager.aster_agents:
+                        await aster_websocket_manager.aster_agents[agent_id].stop_streaming()
+                        del aster_websocket_manager.aster_agents[agent_id]
+
+                        await websocket.send_json(
+                            {
+                                "type": "aster_agent_removed",
+                                "agent_id": agent_id,
+                                "timestamp": datetime.now().isoformat(),
+                            }
+                        )
+
+                elif data.get("type") == "ping":
+                    # Respond to ping
+                    await websocket.send_json({"type": "pong", "timestamp": datetime.now().isoformat()})
 
             except WebSocketDisconnect:
                 break

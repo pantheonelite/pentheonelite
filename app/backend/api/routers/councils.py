@@ -10,6 +10,7 @@ from app.backend.api.schemas import (
     ActivePositionsResponse,
     AgentInfo,
     ConsensusDecisionResponse,
+    CouncilCreateRequest,
     CouncilOverviewResponse,
     CouncilResponse,
     DebateMessage,
@@ -17,6 +18,8 @@ from app.backend.api.schemas import (
     HoldTimes,
     PerformanceDataPoint,
     PortfolioHoldingDetail,
+    TotalAccountValueDataPoint,
+    TotalAccountValueResponse,
     TradeRecord,
     TradingMetricsResponse,
 )
@@ -24,11 +27,9 @@ from app.backend.api.utils.agent_metadata import create_agent_info, normalize_ag
 from app.backend.api.utils.error_handling import handle_repository_errors
 from app.backend.client.aster import AsterClient
 from app.backend.client.binance import BinanceClient
-from app.backend.config.binance import BinanceConfig
-from app.backend.db.models import Council
+from app.backend.db.models import Council, Wallet
 from app.backend.db.models.futures_position import FuturesPosition
-from app.backend.db.repositories.futures_position_repository import FuturesPositionRepository
-from app.backend.db.repositories.spot_holding_repository import SpotHoldingRepository
+from app.backend.db.repositories.wallet_repository import WalletRepository
 from fastapi import APIRouter, HTTPException, Query
 
 logger = structlog.get_logger(__name__)
@@ -64,6 +65,7 @@ async def get_system_councils(uow: UnitOfWorkDep):
 
     council_fields = {
         "user_id",
+        "wallet_id",
         "risk_settings",
         "win_rate",
         "forked_from_id",
@@ -153,6 +155,8 @@ async def get_system_councils_activity(
 
             # Fetch trades from new tables
             if council.trading_type == "futures":
+                from app.backend.db.repositories.futures_position_repository import FuturesPositionRepository
+
                 futures_repo = FuturesPositionRepository(repo.session)
                 closed_positions = await futures_repo.find_closed_positions(council.id, limit=limit)
 
@@ -260,6 +264,8 @@ async def get_council_overview(
     trades_list = None
     if include_trades:
         if council.trading_type == "futures":
+            from app.backend.db.repositories.futures_position_repository import FuturesPositionRepository
+
             futures_repo = FuturesPositionRepository(uow.session)
             closed_positions = await futures_repo.find_closed_positions(council_id, limit=20)
             trades_list = [
@@ -284,19 +290,30 @@ async def get_council_overview(
 
     # Optional: Include portfolio holdings with details (from new tables)
     portfolio_holdings = None
-    if include_portfolio and council.trading_type == "spot":
-        spot_repo = SpotHoldingRepository(uow.session)
-        holdings = await spot_repo.find_active_holdings(council_id)
+    if include_portfolio:
+        if council.trading_type == "spot":
+            from app.backend.db.repositories.spot_holding_repository import SpotHoldingRepository
 
-        portfolio_holdings = {}
-        for h in holdings:
-            portfolio_holdings[h.symbol] = PortfolioHoldingDetail(
-                quantity=float(h.total),
-                avg_cost=float(h.average_cost),
-                total_cost=float(h.total_cost),
-                current_value=float(h.current_value) if h.current_value else None,
-                unrealized_pnl=float(h.unrealized_pnl) if h.unrealized_pnl else None,
-            )
+            spot_repo = SpotHoldingRepository(uow.session)
+            holdings = await spot_repo.find_active_holdings(council_id)
+
+            portfolio_holdings = {}
+            for h in holdings:
+                portfolio_holdings[h.symbol] = PortfolioHoldingDetail(
+                    quantity=float(h.total),
+                    avg_cost=float(h.average_cost),
+                    total_cost=float(h.total_cost),
+                    current_value=float(h.current_value) if h.current_value else None,
+                    unrealized_pnl=float(h.unrealized_pnl) if h.unrealized_pnl else None,
+                )
+
+    # Get wallet CA (Contract Address) and wallet name if wallet exists
+    wallet_ca = None
+    wallet_name = None
+    if council.wallet_id:
+        wallet_repo = WalletRepository(uow.session)
+        wallet_ca = await wallet_repo.get_wallet_ca_by_id(council.wallet_id)
+        wallet_name = await wallet_repo.get_wallet_name_by_id(council.wallet_id)
 
     # Build response
     return CouncilOverviewResponse(
@@ -325,6 +342,8 @@ async def get_council_overview(
         recent_debates=debates_list,
         recent_trades=trades_list,
         portfolio_holdings=portfolio_holdings,
+        wallet_ca=wallet_ca,
+        wallet_name=wallet_name,
     )
 
 
@@ -370,6 +389,8 @@ async def get_council_trades(
         raise HTTPException(status_code=404, detail="Council not found")
 
     if council.trading_type == "futures":
+        from app.backend.db.repositories.futures_position_repository import FuturesPositionRepository
+
         futures_repo = FuturesPositionRepository(uow.session)
         closed_positions = await futures_repo.find_closed_positions(council_id, limit=limit)
 
@@ -427,6 +448,103 @@ async def get_council_performance(
         )
         for p in filtered_data
     ]
+
+
+@handle_repository_errors
+@router.get("/system/total-account-value", response_model=TotalAccountValueResponse)
+async def get_total_account_value(
+    uow: UnitOfWorkDep,
+    days: Annotated[int, Query(ge=1, le=365)] = 72,
+):
+    """
+    Get account values for all system councils over time.
+    
+    Returns data with each council as a separate line, similar to nof1.ai's total account value chart.
+    """
+    from decimal import Decimal
+
+    repo = uow.get_repository(Council)
+    councils_data = await repo.get_council_account_values(days=days)
+
+    if not councils_data:
+        # Return empty response if no data
+        return TotalAccountValueResponse(
+            councils=[],
+            total_current_value=0.0,
+            total_change_dollar=0.0,
+            total_change_percentage=0.0,
+        )
+
+    # Process each council's data
+    council_series = []
+    total_current_value = 0.0
+    total_first_value = 0.0
+
+    for council_id, data in councils_data.items():
+        data_points = data["data_points"]
+        if not data_points:
+            continue
+
+        # Sort by timestamp
+        data_points.sort(key=lambda x: x["timestamp"])
+
+        # Calculate current value (latest)
+        current_value = data["current_value"] if data["current_value"] > 0 else (data_points[-1]["total_value"] if data_points else 0.0)
+        first_value = data_points[0]["total_value"] if data_points else current_value
+        
+        change_dollar = current_value - first_value
+        change_percentage = (
+            (change_dollar / first_value * 100) if first_value > 0 else 0.0
+        )
+
+        total_current_value += current_value
+        total_first_value += first_value
+
+        # Create data points with change calculations
+        processed_points = []
+        for i, point in enumerate(data_points):
+            prev_value = (
+                data_points[i - 1]["total_value"]
+                if i > 0
+                else point["total_value"]
+            )
+            point_change_dollar = point["total_value"] - prev_value
+            point_change_percentage = (
+                (point_change_dollar / prev_value * 100) if prev_value > 0 else 0.0
+            )
+
+            processed_points.append(
+                TotalAccountValueDataPoint(
+                    timestamp=point["timestamp"],
+                    total_value=point["total_value"],
+                    change_dollar=point_change_dollar,
+                    change_percentage=point_change_percentage,
+                )
+            )
+
+        council_series.append(
+            CouncilAccountValueSeries(
+                council_id=council_id,
+                council_name=data["council_name"],
+                data_points=processed_points,
+                current_value=current_value,
+                change_dollar=change_dollar,
+                change_percentage=change_percentage,
+            )
+        )
+
+    # Calculate total changes
+    total_change_dollar = total_current_value - total_first_value
+    total_change_percentage = (
+        (total_change_dollar / total_first_value * 100) if total_first_value > 0 else 0.0
+    )
+
+    return TotalAccountValueResponse(
+        councils=council_series,
+        total_current_value=total_current_value,
+        total_change_dollar=total_change_dollar,
+        total_change_percentage=total_change_percentage,
+    )
 
 
 @handle_repository_errors
@@ -584,11 +702,15 @@ async def get_council_active_positions(council_id: int, uow: UnitOfWorkDep):
 
     if council.trading_type == "futures":
         # Get futures positions from new table (direct instantiation)
+        from app.backend.db.repositories.futures_position_repository import FuturesPositionRepository
+
         futures_repo = FuturesPositionRepository(uow.session)
         positions = await futures_repo.find_open_positions(council_id)
 
         # Initialize appropriate client for price updates
         if council.trading_mode == "paper":
+            from app.backend.config.binance import BinanceConfig
+
             config = BinanceConfig(testnet=True)
             client = BinanceClient(config)
         else:
@@ -642,11 +764,15 @@ async def get_council_active_positions(council_id: int, uow: UnitOfWorkDep):
 
     else:  # spot
         # Get spot holdings from new table (direct instantiation)
+        from app.backend.db.repositories.spot_holding_repository import SpotHoldingRepository
+
         spot_repo = SpotHoldingRepository(uow.session)
         holdings = await spot_repo.find_active_holdings(council_id)
 
         # Initialize appropriate client
         if council.trading_mode == "paper":
+            from app.backend.config.binance import BinanceConfig
+
             config = BinanceConfig(testnet=True)
             client = BinanceClient(config)
         else:
@@ -692,3 +818,55 @@ async def get_council_active_positions(council_id: int, uow: UnitOfWorkDep):
         positions=active_positions,
         total_unrealized_pnl=total_unrealized,
     )
+
+
+@handle_repository_errors
+@router.post("/", response_model=CouncilResponse)
+async def create_council(request: CouncilCreateRequest, uow: UnitOfWorkDep):
+    """
+    Create a new council.
+    
+    If wallet information (api_key, secret_key) is provided, a wallet will be
+    created and linked to the council.
+    """
+    council_repo = uow.get_repository(Council)
+    
+    # Create the council
+    council = await council_repo.create_council(
+        name=request.name,
+        agents=request.agents,
+        connections=request.connections,
+        description=request.description,
+        strategy=request.strategy,
+        tags=request.tags,
+        workflow_config=request.workflow_config,
+        visual_layout=request.visual_layout,
+        initial_capital=request.initial_capital,
+        risk_settings=request.risk_settings,
+        is_public=request.is_public,
+        is_template=request.is_template,
+    )
+    
+    # Create wallet if wallet info is provided
+    if request.api_key and request.secret_key:
+        wallet_repo = WalletRepository(uow.session)
+        # Default to "binance" if exchange not provided
+        exchange = request.exchange or "binance"
+        wallet = await wallet_repo.create_wallet(
+            council_id=council.id,
+            exchange=exchange,
+            api_key=request.api_key,
+            secret_key=request.secret_key,
+            ca=request.ca,
+            is_active=True,
+        )
+        logger.info(
+            "Created wallet for council",
+            council_id=council.id,
+            wallet_id=wallet.id,
+        )
+    
+    # Reload council to get wallet_id if wallet was created
+    council = await council_repo.get_council_by_id(council.id)
+    
+    return CouncilResponse.model_validate(council, from_attributes=True)

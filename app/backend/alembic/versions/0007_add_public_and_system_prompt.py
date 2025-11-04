@@ -41,3 +41,4 @@ def downgrade() -> None:
     # Remove is_public from councils
     op.drop_index(op.f("ix_councils_is_public"), table_name="councils")
     op.drop_column("councils", "is_public")
+

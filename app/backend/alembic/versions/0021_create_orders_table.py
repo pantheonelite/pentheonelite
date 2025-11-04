@@ -7,10 +7,9 @@ Create Date: 2025-11-01 00:02:00.000000
 Unified orders table for both futures and spot with exact Binance status enums.
 """
 
+from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
-
-from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "0021"

@@ -24,7 +24,7 @@ class CryptoPortfolioDecision(BaseModel):
     """Portfolio decision for a specific crypto futures symbol."""
 
     symbol: str
-    action: Literal["buy", "sell", "hold"]
+    action: Literal["buy", "sell", "hold", "close"]
     quantity: float
     reasoning: str
     confidence: float  # 0-100
@@ -84,7 +84,7 @@ class CryptoPortfolioDecision(BaseModel):
         if isinstance(v, (int, float)):
             return float(v)
         # Handle type objects (from buggy defaults)
-        if v in (float, int):
+        if v == float or v == int:
             return None
         return None
 
@@ -104,7 +104,7 @@ class CryptoPortfolioDecision(BaseModel):
                 return "medium"
             return "high"
         # Handle type objects
-        if v in (str, float):
+        if v == str or v == float:
             return None
         return None
 
@@ -551,39 +551,43 @@ class CryptoPortfolioManagerAgent(BaseCryptoAgent):
 
                 **Position Management Decisions**:
 
-                When you see an EXISTING position for a symbol, you must decide:
+                ⚠️ CRITICAL RULES:
+                - You can ONLY open new positions or close existing positions
+                - You CANNOT update, add to, reduce, or reverse existing positions
+                - When a position exists, your ONLY options are CLOSE or HOLD
 
-                1. **ADD_TO_POSITION** (action: "buy" if LONG, "sell" if SHORT):
-                   - Increases position size in same direction
-                   - Use when: Trend continues, high confidence, position not max size yet
-                   - Example: Have LONG 0.5 BTC, add 0.2 BTC more → total 0.7 BTC LONG
+                When you see an EXISTING position for a symbol:
 
-                2. **CLOSE_POSITION** (action: opposite of current side):
-                   - Closes entire position to realize profit/loss
-                   - Use when: Target reached, trend reversal, risk too high
-                   - Example: Have LONG 0.5 BTC → SELL 0.5 BTC to close
+                1. **CLOSE_POSITION** (action: "close"):
+                   - Closes ENTIRE position to realize profit/loss
+                   - Use when: Target reached, stop loss hit, risk too high, trend reversal
+                   - Example: Have LONG 0.5 BTC → action="close" → exits completely
 
-                3. **REVERSE_POSITION** (action: opposite, quantity > current position):
-                   - Closes current position AND opens opposite direction
-                   - Use when: Strong reversal signal, flip from bullish to bearish
-                   - Example: Have LONG 0.5 BTC → SELL 1.0 BTC = close LONG, open SHORT 0.5 BTC
-
-                4. **HOLD_POSITION** (action: "hold"):
+                2. **HOLD_POSITION** (action: "hold"):
                    - Keep existing position unchanged
-                   - Use when: Position is good, no strong new signals, waiting for target
+                   - Use when: Position is profitable, waiting for target, trend continuing
                    - Example: Have LONG 0.5 BTC with profit → keep holding
 
-                5. **REDUCE_POSITION** (action: partial close):
-                   - Take partial profits or reduce risk
-                   - Use when: Target partially hit, reduce exposure
-                   - Example: Have LONG 1.0 BTC → SELL 0.5 BTC = keep LONG 0.5 BTC
+                When you see NO existing position for a symbol:
 
-                **Decision Framework for Existing Positions**:
-                - Check `unrealized_pnl`: If profitable and at target → CLOSE or REDUCE
-                - Check trend alignment: If trend changed → REVERSE or CLOSE
-                - Check risk: If `liquidation_price` too close → REDUCE or CLOSE
-                - Check signals: If signals stronger → ADD_TO
-                - Default: If neutral signals and position profitable → HOLD
+                3. **OPEN_NEW_POSITION** (action: "buy" for LONG, "sell" for SHORT):
+                   - Opens fresh position
+                   - Use when: Strong signals, good entry point, risk acceptable
+                   - Example: No position → action="buy" → opens LONG
+
+                **Decision Framework:**
+                - Has position + target hit → **CLOSE**
+                - Has position + risk too high → **CLOSE**
+                - Has position + trend reverses → **CLOSE** (do NOT reverse, just close)
+                - Has position + trend continues → **HOLD**
+                - No position + strong signals → **OPEN** (buy/sell)
+                - No position + weak signals → **HOLD** (skip trading)
+
+                **Examples:**
+                1. LONG 0.5 BTC at $50k, now $52k, target hit → action="close"
+                2. LONG 0.5 BTC, bearish reversal → action="close" (close first, may open SHORT next cycle)
+                3. LONG 0.5 BTC, trend continues → action="hold"
+                4. No position, bullish signals → action="buy"
 
                 ⚠️ CRITICAL FUTURES TRADING RULES:
                 1. **BUY = OPEN LONG** (profit when price INCREASES)
@@ -648,7 +652,7 @@ class CryptoPortfolioManagerAgent(BaseCryptoAgent):
                 🎯 DECISION FRAMEWORK:
 
                 **AGGRESSIVE MODE ACTIVATED - Portfolio >70% cash:**
-                →  **MANDATORY**: MUST open positions (BUY or SELL, NEVER HOLD)
+                →  **MANDATORY**: MUST open NEW positions (BUY or SELL, NEVER HOLD)
                 → Trade with >45% confidence (lower threshold than normal)
                 → **CRITICAL**: Empty portfolio = UNACCEPTABLE - ALWAYS find a direction
                 → Mixed signals? Pick the STRONGEST one (even if barely stronger)
@@ -656,19 +660,21 @@ class CryptoPortfolioManagerAgent(BaseCryptoAgent):
                 → **NO EXCUSES**: Find ANY reason to trade - this is FUTURES, profit both ways!
 
                 **For Each Symbol, Evaluate:**
-                1. Technical Signal Direction (BUY/SELL/HOLD)
-                2. Risk Assessment (BUY/SELL/HOLD)
-                3. Sentiment/Momentum
-                4. Current Price vs Support/Resistance
+                1. Check if position exists (YES/NO)
+                2. Technical Signal Direction (BUY/SELL/HOLD)
+                3. Risk Assessment (BUY/SELL/HOLD)
+                4. Sentiment/Momentum
+                5. Current Price vs Support/Resistance
 
                 **Then Decide (AGGRESSIVE BIAS):**
-                - Both Bullish → **BUY (LONG)** with 5-10x leverage
-                - Both Bearish → **SELL (SHORT)** with 5-10x leverage
-                - One Bullish, One Neutral → **BUY (LONG)** with 3-5x leverage
-                - One Bearish, One Neutral → **SELL (SHORT)** with 3-5x leverage
-                - One Bullish, One Bearish → **FOLLOW TECHNICAL SIGNAL** (higher weight)
-                - Both HOLD + Empty Portfolio → **MUST TRADE** - pick direction with ANY edge
-                - Both HOLD + Already positioned → Consider adding to position or **HOLD**
+                - NO position + Both Bullish → **BUY (LONG)** with 5-10x leverage
+                - NO position + Both Bearish → **SELL (SHORT)** with 5-10x leverage
+                - NO position + One Bullish, One Neutral → **BUY (LONG)** with 3-5x leverage
+                - NO position + One Bearish, One Neutral → **SELL (SHORT)** with 3-5x leverage
+                - NO position + One Bullish, One Bearish → **FOLLOW TECHNICAL SIGNAL** (higher weight)
+                - NO position + Both HOLD + Empty Portfolio → **MUST TRADE** - pick direction with ANY edge
+                - HAS position + Signals continue → **HOLD** (keep position)
+                - HAS position + Signals reverse or target hit → **CLOSE** (exit position)
 
                 **AGGRESSIVE Position Sizing:**
                 - High confidence (>75%): 25-40% of available margin (MAX CONVICTION)
@@ -686,7 +692,7 @@ class CryptoPortfolioManagerAgent(BaseCryptoAgent):
                   "decisions": {{
                     "SYMBOL": {{
                       "symbol": "string",
-                      "action": "buy" | "sell" | "hold",
+                      "action": "buy" | "sell" | "hold" | "close",
                       "quantity": float,
                       "reasoning": "string (MUST include: signal analysis, direction bias, why LONG/SHORT/HOLD)",
                       "confidence": float (0-100),
@@ -1001,7 +1007,7 @@ class CryptoPortfolioManagerAgent(BaseCryptoAgent):
         # Calculate current exposure from all positions
         total_exposure = 0
         positions_count = 0
-        for pos_data in positions.values():
+        for pos_symbol, pos_data in positions.items():
             if pos_data:
                 positions_count += 1
                 # Calculate notional value of position

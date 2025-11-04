@@ -186,7 +186,7 @@ class CryptoTraderAgent(BaseCryptoAgent):
         """Get current market data for the symbol."""
         try:
             price_data = json.loads(self.price_tool._run(symbol, "aster"))
-
+            
             return {
                 "current_price": price_data.get("price", 0),
                 "change_24h": price_data.get("change_percent_24h", 0),
@@ -213,7 +213,11 @@ class CryptoTraderAgent(BaseCryptoAgent):
 
             # Create context from current situation
             curr_situation = "\n\n".join(
-                [str(report) for report in analysis_reports.values() if report and isinstance(report, str)]
+                [
+                    str(report)
+                    for report in analysis_reports.values()
+                    if report and isinstance(report, str)
+                ]
             )
 
             # Retrieve similar past trading situations
@@ -221,7 +225,7 @@ class CryptoTraderAgent(BaseCryptoAgent):
 
             memories = []
             if past_memories:
-                for _i, rec in enumerate(past_memories, 1):
+                for i, rec in enumerate(past_memories, 1):
                     memories.append(
                         {
                             "decision": rec.get("decision", "N/A"),
@@ -246,7 +250,9 @@ class CryptoTraderAgent(BaseCryptoAgent):
         potential_gain = target_price - current_price
         potential_loss = current_price - stop_loss
 
-        risk_reward_ratio = abs(potential_gain / potential_loss) if potential_loss != 0 else 0
+        risk_reward_ratio = (
+            abs(potential_gain / potential_loss) if potential_loss != 0 else 0
+        )
 
         return {
             "risk_reward_ratio": round(risk_reward_ratio, 2),

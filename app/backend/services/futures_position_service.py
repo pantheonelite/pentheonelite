@@ -124,7 +124,6 @@ class FuturesPositionService:
 
         # Update council's last_executed_at
         from app.backend.db.repositories.council_repository import CouncilRepository
-
         council_repo = CouncilRepository(self.session)
         council = await council_repo.get_council_by_id(council_id)
         if council:
@@ -142,6 +141,157 @@ class FuturesPositionService:
             leverage=leverage,
             platform=platform,
             trading_mode=trading_mode,
+        )
+
+        return position
+
+    async def aupdate_or_create_position(  # noqa: ARG002, PLR0913
+        self,
+        council_id: int,
+        symbol: str,
+        position_side: PositionSide,
+        position_amt_delta: Decimal,  # noqa: ARG002
+        new_entry_price: Decimal,  # noqa: ARG002
+        leverage: int,  # noqa: ARG002
+        margin_type: MarginType = "CROSSED",  # noqa: ARG002
+        platform: Platform = "binance",  # noqa: ARG002
+        trading_mode: TradingMode = "paper",  # noqa: ARG002
+        liquidation_price: Decimal | None = None,  # noqa: ARG002
+        isolated_margin: Decimal | None = None,  # noqa: ARG002
+        confidence: Decimal | None = None,  # noqa: ARG002
+        agent_reasoning: str | None = None,  # noqa: ARG002
+        external_position_id: str | None = None,  # noqa: ARG002
+    ) -> tuple[FuturesPosition, bool]:
+        """
+        ⚠️ DEPRECATED: Position updates are no longer allowed.
+
+        This method is kept for backward compatibility but raises an error when called.
+        Trading policy: Agents can only open new positions or close existing positions.
+        To change a position, close it first, then open a new one in the next trading cycle.
+
+        Parameters
+        ----------
+        council_id : int
+            Council ID
+        symbol : str
+            Trading symbol
+        position_side : PositionSide
+            Position side ("LONG", "SHORT", "BOTH")
+        position_amt_delta : Decimal
+            Amount to ADD to position (can be negative for reduction)
+        new_entry_price : Decimal
+            Entry price from latest order
+        leverage : int
+            Leverage (1-125)
+        margin_type : MarginType
+            Margin type
+        platform : Platform
+            Platform
+        trading_mode : TradingMode
+            Trading mode
+        liquidation_price : Decimal | None
+            Liquidation price
+        isolated_margin : Decimal | None
+            Isolated margin
+        confidence : Decimal | None
+            Agent confidence
+        agent_reasoning : str | None
+            Agent reasoning
+        external_position_id : str | None
+            External position ID
+
+        Returns
+        -------
+        tuple[FuturesPosition, bool]
+            (position, was_created) - position object and whether it was newly created
+
+        Raises
+        ------
+        ValueError
+            Always raises - position updates not allowed
+        """
+        logger.error(
+            "Attempt to update position rejected - policy violation",
+            council_id=council_id,
+            symbol=symbol,
+            position_side=position_side,
+        )
+        raise ValueError(
+            "Position updates are not allowed per trading policy. "
+            "Agents must close existing positions before opening new ones in the same direction. "
+            f"Council {council_id}, Symbol: {symbol}, Side: {position_side}"
+        )
+
+    async def aupdate_exit_plan(
+        self,
+        position_id: int,
+        stop_loss_price: Decimal | None = None,
+        stop_loss_order_id: str | None = None,
+        take_profit_short: Decimal | None = None,
+        take_profit_short_order_id: str | None = None,
+        take_profit_mid: Decimal | None = None,
+        take_profit_mid_order_id: str | None = None,
+        take_profit_long: Decimal | None = None,
+        take_profit_long_order_id: str | None = None,
+    ) -> FuturesPosition:
+        """
+        Update position with exit plan details.
+
+        Parameters
+        ----------
+        position_id : int
+            Position ID
+        stop_loss_price : Decimal | None
+            Stop loss price level
+        stop_loss_order_id : str | None
+            Exchange order ID for stop loss
+        take_profit_short : Decimal | None
+            Short-term take profit price
+        take_profit_short_order_id : str | None
+            Exchange order ID for short-term TP
+        take_profit_mid : Decimal | None
+            Mid-term take profit price
+        take_profit_mid_order_id : str | None
+            Exchange order ID for mid-term TP
+        take_profit_long : Decimal | None
+            Long-term take profit price
+        take_profit_long_order_id : str | None
+            Exchange order ID for long-term TP
+
+        Returns
+        -------
+        FuturesPosition
+            Updated position
+
+        Raises
+        ------
+        ValueError
+            If position not found
+        """
+        position = await self.repo.get_by_id(position_id)
+        if not position:
+            raise ValueError(f"Position {position_id} not found")
+
+        # Update exit plan fields
+        position.stop_loss_price = stop_loss_price
+        position.stop_loss_order_id = stop_loss_order_id
+        position.take_profit_short = take_profit_short
+        position.take_profit_short_order_id = take_profit_short_order_id
+        position.take_profit_mid = take_profit_mid
+        position.take_profit_mid_order_id = take_profit_mid_order_id
+        position.take_profit_long = take_profit_long
+        position.take_profit_long_order_id = take_profit_long_order_id
+        position.updated_at = datetime.now(UTC)
+
+        await self.session.commit()
+        await self.session.refresh(position)
+
+        logger.info(
+            "Exit plan updated",
+            position_id=position_id,
+            symbol=position.symbol,
+            has_sl=bool(stop_loss_price),
+            has_tp=bool(take_profit_short or take_profit_mid or take_profit_long),
         )
 
         return position
@@ -202,7 +352,6 @@ class FuturesPositionService:
 
         # Update council's last_executed_at
         from app.backend.db.repositories.council_repository import CouncilRepository
-
         council_repo = CouncilRepository(self.session)
         council = await council_repo.get_council_by_id(position.council_id)
         if council:

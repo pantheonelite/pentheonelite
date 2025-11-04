@@ -36,6 +36,16 @@ class Council(SQLModel, table=True):
         default=None,
         sa_column=Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True),
     )
+    wallet_id: int | None = Field(
+        default=None,
+        sa_column=Column(
+            Integer,
+            ForeignKey("council_wallets.id", ondelete="SET NULL"),
+            nullable=True,
+            index=True,
+        ),
+        description="Reference to wallet for API credentials",
+    )
     is_system: bool = Field(
         default=False,
         sa_column=Column(Boolean, nullable=False, server_default="false", index=True),

@@ -46,6 +46,29 @@ export interface DebateMessage {
   created_at: string;
 }
 
+export interface TotalAccountValueDataPoint {
+  timestamp: string;
+  total_value: number;
+  change_dollar: number;
+  change_percentage: number;
+}
+
+export interface CouncilAccountValueSeries {
+  council_id: number;
+  council_name: string;
+  data_points: TotalAccountValueDataPoint[];
+  current_value: number;
+  change_dollar: number;
+  change_percentage: number;
+}
+
+export interface TotalAccountValueResponse {
+  councils: CouncilAccountValueSeries[];
+  total_current_value: number;
+  total_change_dollar: number;
+  total_change_percentage: number;
+}
+
 export interface TradeRecord {
   id: number;
   symbol: string;
@@ -316,6 +339,23 @@ class SystemCouncilsService {
       trades: allTrades.slice(0, limit),
       councils: councilMap,
     };
+  }
+
+  /**
+   * Get aggregated total account value for all system councils.
+   * Similar to nof1.ai's total account value chart.
+   */
+  async getTotalAccountValue(days: number = 72): Promise<TotalAccountValueResponse> {
+    try {
+      const response = await fetch(`${this.baseUrl}/system/total-account-value?days=${days}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch total account value');
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching total account value:', error);
+      throw error;
+    }
   }
 }
 

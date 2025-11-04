@@ -40,8 +40,6 @@ class FlowResponse(BaseModel):
     updated_at: datetime | None
 
     class Config:
-        """Pydantic configuration."""
-
         from_attributes = True
 
 

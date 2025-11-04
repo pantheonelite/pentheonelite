@@ -6,7 +6,6 @@ from typing import Literal
 
 import structlog
 from app.backend.db.models.spot_holding import SpotHolding
-from app.backend.db.repositories.council_repository import CouncilRepository
 from app.backend.db.repositories.spot_holding_repository import SpotHoldingRepository
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -132,6 +131,7 @@ class SpotHoldingService:
             holding.closed_at = datetime.now(UTC)
 
         # Update council's last_executed_at when holding changes
+        from app.backend.db.repositories.council_repository import CouncilRepository
         council_repo = CouncilRepository(self.session)
         council = await council_repo.get_council_by_id(council_id)
         if council:

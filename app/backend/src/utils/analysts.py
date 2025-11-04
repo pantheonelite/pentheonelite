@@ -24,7 +24,7 @@ def _build_analyst_config() -> dict:
         Dictionary mapping agent keys to config dicts with 'agent_func' key.
     """
     config = {}
-    for key, (_node_name, func) in AgentManager.get_agent_nodes().items():
+    for key, (node_name, func) in AgentManager.get_agent_nodes().items():
         config[key] = {"agent_func": func}
     return config
 

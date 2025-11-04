@@ -13,7 +13,7 @@ from pydantic import BaseModel, field_validator
 class CryptoRiskSignal(BaseModel):
     """Signal output from crypto risk manager agent."""
 
-    signal: Literal["strong_buy", "buy", "hold", "sell", "strong_sell"]
+    signal: Literal["strong_buy", "buy", "hold", "sell", "strong_sell", "close"]
     confidence: float  # 0-100
     reasoning: str
     portfolio_risk: float | None = None
@@ -209,24 +209,40 @@ When analyzing risk, you will see current positions with these fields:
 
 **Risk Assessment for Existing Positions**:
 
+⚠️ CRITICAL: You can ONLY recommend CLOSE or HOLD for existing positions.
+You CANNOT recommend adding to or reducing positions.
+
 1. **Position at Profit** (`unrealized_pnl` > 0):
-   - If trend continues + high confidence → Recommend ADD_TO
+   - If trend continues + high confidence → Recommend HOLD (keep position)
    - If target reached → Recommend CLOSE (take profit)
-   - If risk increases → Recommend REDUCE
+   - If risk increases → Recommend CLOSE (exit early)
 
 2. **Position at Loss** (`unrealized_pnl` < 0):
    - If trend reversing → URGENT: Recommend CLOSE
    - If stop-loss hit → URGENT: Recommend CLOSE
-   - If temporary dip in uptrend → Recommend HOLD or ADD_TO (averaging)
+   - If temporary dip in uptrend → Recommend HOLD (wait for recovery)
 
 3. **High Leverage Risk** (leverage > 7x):
    - Monitor `liquidation_price` proximity
-   - If price within 10% of liquidation → URGENT: Recommend REDUCE or CLOSE
-   - Warn about margin calls
+   - If price within 10% of liquidation → URGENT: Recommend CLOSE
+   - Warn about margin calls and liquidation risk
 
 4. **Concentration Risk**:
-   - If single position > 40% of total capital → Recommend diversify
-   - If correlated positions → Warn about correlation risk
+   - If single position > 40% of total capital → Recommend CLOSE (reduce exposure)
+   - If correlated positions → Warn about correlation risk, may recommend CLOSE
+
+**CLOSE Recommendation Criteria:**
+
+Use "CLOSE" signal when risk exceeds acceptable levels:
+- Liquidation price within 10% of current price
+- Position size >40% of total portfolio (concentration risk)
+- Leverage >5x with high volatility (>8% daily movement)
+- Unrealized loss >15% of position value
+- Multiple correlated positions all losing
+- Market volatility spike (sudden price swings)
+- Trend reversal confirmed across multiple indicators
+
+Output "signal": "CLOSE" when immediate exit is needed for risk management.
 
 🎯 AGGRESSIVE FUTURES TRADING FOCUS:
 - LONG positions (BUY): Profit when price INCREASES - recommend with ANY bullish edge
@@ -315,9 +331,9 @@ Signal Analysis Data:
 
 Respond EXACTLY in this JSON schema:
 {{
-  "signal": "strong_buy" | "buy" | "hold" | "sell" | "strong_sell",
+  "signal": "strong_buy" | "buy" | "hold" | "sell" | "strong_sell" | "close",
   "confidence": float (0-100),
-  "reasoning": "string (MUST explain: signal analysis, why LONG/SHORT/HOLD, leverage rationale)",
+  "reasoning": "string (MUST explain: signal analysis, why LONG/SHORT/HOLD/CLOSE, leverage rationale)",
   "portfolio_risk": float | null (0-1, overall portfolio risk level),
   "position_risk": float | null (0-1, this specific position risk),
   "market_risk": float | null (0-1, current market condition risk),

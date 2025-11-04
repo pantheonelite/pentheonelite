@@ -53,7 +53,9 @@ def upgrade() -> None:
     # Now add the foreign key constraints that we skipped in migration 0008
     print("Adding foreign key constraints to councils_v2 tables...")
 
-    op.create_foreign_key("fk_councils_v2_user_id", "councils_v2", "users", ["user_id"], ["id"], ondelete="CASCADE")
+    op.create_foreign_key(
+        "fk_councils_v2_user_id", "councils_v2", "users", ["user_id"], ["id"], ondelete="CASCADE"
+    )
     print("  ✓ Added FK: councils_v2.user_id → users.id")
 
     op.create_foreign_key(

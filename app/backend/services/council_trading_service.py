@@ -71,11 +71,17 @@ class CouncilTradingService:
             - was_executed: bool
         """
         try:
-            decision = str(consensus["decision"])
+            decision = str(consensus.get("decision", "HOLD")).upper()
             symbol = str(consensus["symbol"])
             confidence = Decimal(str(consensus.get("confidence", 0.5)))
             leverage = int(consensus.get("leverage", 1)) if "leverage" in consensus else None
             agent_reasoning = consensus.get("reasoning")
+
+            # Extract exit plan data from consensus
+            stop_loss = consensus.get("stop_loss")
+            take_profit_short = consensus.get("take_profit_short")
+            take_profit_mid = consensus.get("take_profit_mid")
+            take_profit_long = consensus.get("take_profit_long")
 
             logger.info(
                 "Processing consensus trade",
@@ -126,6 +132,21 @@ class CouncilTradingService:
             # Create unified trading service for this council
             trading_service = UnifiedTradingService(self.session, council)
 
+            # Handle CLOSE decision
+            if decision == "CLOSE":
+                result = await trading_service.aclose_existing_position(
+                    symbol=symbol,
+                    position_side="BOTH" if council.trading_mode == "paper" else None,
+                )
+                await self.metrics_service.aupdate_all_metrics(council_id)
+                return {
+                    "success": result.get("success", False),
+                    "position_id": result.get("position_id"),
+                    "order_id": result.get("order_id"),
+                    "reason": "position_closed" if result.get("success") else result.get("error", "unknown_error"),
+                    "was_executed": result.get("success", False),
+                }
+
             # Map decision to order side
             side: OrderSide
             if decision in ["BUY", "LONG"]:
@@ -146,14 +167,18 @@ class CouncilTradingService:
                 council_capital=council.available_balance or council.initial_capital,
             )
 
-            # Execute trade
+            # Execute trade with exit plan
             result = await trading_service.aexecute_trade(
                 symbol=symbol,
                 side=side,
-                position_size_usd=position_size,  # Fixed: renamed from quantity to position_size_usd
+                position_size_usd=position_size,
                 confidence=confidence,
                 agent_reasoning=str(agent_reasoning) if agent_reasoning else None,
                 leverage=leverage,
+                stop_loss=float(stop_loss) if stop_loss else None,
+                take_profit_short=float(take_profit_short) if take_profit_short else None,
+                take_profit_mid=float(take_profit_mid) if take_profit_mid else None,
+                take_profit_long=float(take_profit_long) if take_profit_long else None,
             )
 
             # Update council metrics

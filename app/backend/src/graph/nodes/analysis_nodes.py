@@ -1,5 +1,7 @@
 """Analysis nodes for crypto trading workflow."""
 
+import json
+
 import structlog
 from app.backend.src.graph.enhanced_state import CryptoAgentState
 

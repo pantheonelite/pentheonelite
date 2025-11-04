@@ -188,6 +188,7 @@ export interface CouncilOverviewResponse {
   recent_debates?: DebateMessage[];
   recent_trades?: TradeRecord[];
   portfolio_holdings?: Record<string, PortfolioHoldingDetail>;
+  wallet_name?: string | null;  // Wallet name for display
 }
 
 export interface GetCouncilOverviewOptions {

@@ -155,7 +155,10 @@ class LLMManager:
 
         try:
             json_text = self._extract_json(response)
-            data = json.loads(json_text) if json_text else json.loads(response)
+            if json_text:
+                data = json.loads(json_text)
+            else:
+                data = json.loads(response)
 
             # Normalize signal/recommendation fields to uppercase for Literal validation
             if "signal" in data and isinstance(data["signal"], str):
@@ -228,6 +231,7 @@ class LLMManager:
             # Set defaults based on type
             default_values[field_name] = self._get_default_value(field_name, field_type)
 
+        logger.info("Default values: %s", json.dumps(default_values, indent=2))
         return model_class(**default_values)
 
     def _get_default_value(self, field_name: str, field_type: Any) -> Any:
@@ -236,11 +240,28 @@ class LLMManager:
 
         Handles Optional, Union, Literal types and returns correct type defaults.
         """
+        import structlog
         from typing import Literal, Union, get_args, get_origin
+
+        temp_logger = structlog.get_logger(__name__)
 
         # Get origin type (handles Optional, Union, etc.)
         origin = get_origin(field_type)
         args = get_args(field_type)
+
+        # Check if this is an Optional field (Union with None)
+        is_optional = origin is Union and type(None) in args
+
+        # Debug logging for problematic fields
+        if field_name in ["liquidation_risk", "funding_rate_impact", "leverage_sentiment", "funding_sentiment"]:
+            temp_logger.info(
+                "Debug default value",
+                field_name=field_name,
+                field_type=str(field_type),
+                origin=str(origin),
+                args=str(args),
+                is_optional=is_optional,
+            )
 
         # Handle Optional/Union types - extract the actual type
         if origin is Union:
@@ -250,6 +271,9 @@ class LLMManager:
                 field_type = non_none_types[0]
                 origin = get_origin(field_type)
                 args = get_args(field_type)
+            else:
+                # Union is only None, return None
+                return None
 
         # Handle Literal types - return first literal value (UPPERCASE for signals)
         if origin is Literal:
@@ -273,6 +297,21 @@ class LLMManager:
 
         # String fields - use semantic defaults
         if field_type is str or origin is str:
+            # For Optional string fields, return None instead of a default string
+            # This prevents type mismatches like setting "Unknown" for risk levels
+            if is_optional:
+                if field_name in [
+                    "liquidation_risk",
+                    "funding_rate_impact",
+                    "leverage_sentiment",
+                    "funding_sentiment",
+                ]:
+                    temp_logger.info(
+                        "Returning None for optional string field", field_name=field_name, is_optional=is_optional
+                    )
+                return None
+
+            # Non-optional strings get semantic defaults
             if "signal" in field_name:
                 return "hold"  # Lowercase for underscored signals
             if "recommendation" in field_name:
@@ -283,10 +322,25 @@ class LLMManager:
                 return "NEUTRAL"
             if "action" in field_name:
                 return "hold"
+            if "assessment" in field_name:
+                return "Unknown"
             return "Unknown"
 
-        # Final fallback
-        return 0.0  # Safe numeric default instead of string
+        # Final fallback for Optional fields: return None
+        # This prevents type mismatches (e.g., returning 0.0 for str | None fields)
+        if is_optional:
+            if field_name in ["liquidation_risk", "funding_rate_impact", "leverage_sentiment", "funding_sentiment"]:
+                temp_logger.info("Returning None in final fallback", field_name=field_name, is_optional=is_optional)
+            return None
+
+        # Final fallback for required fields
+        if field_name in ["liquidation_risk", "funding_rate_impact", "leverage_sentiment", "funding_sentiment"]:
+            temp_logger.warning(
+                "Returning 0.0 in final fallback (should not happen for these fields!)",
+                field_name=field_name,
+                field_type=str(field_type),
+            )
+        return 0.0  # Safe numeric default
 
     def get_available_providers(self) -> list[ModelProvider]:
         """Get list of available providers."""

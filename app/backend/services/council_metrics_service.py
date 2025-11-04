@@ -4,10 +4,13 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 import structlog
+from app.backend.config.binance import BinanceConfig
 from app.backend.db.models.futures_position import FuturesPosition
 from app.backend.db.repositories.council_repository import CouncilRepository
 from app.backend.db.repositories.futures_position_repository import FuturesPositionRepository
 from app.backend.db.repositories.spot_holding_repository import SpotHoldingRepository
+from app.backend.db.repositories.wallet_repository import WalletRepository
+from app.backend.services.binance_futures_trading_service import BinanceFuturesTradingService
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = structlog.get_logger(__name__)
@@ -99,8 +102,39 @@ class CouncilMetricsService:
         # Account value = initial_capital + realized_pnl + unrealized_profit - fees
         total_account_value = council.initial_capital + total_realized_pnl + total_unrealized_profit - total_fees
 
-        # Available balance (simplified: account_value - margin_used)
-        available_balance = max(Decimal(0), total_account_value - total_margin_used)
+        # Available balance: sync from wallet API if council has wallet, otherwise calculate
+        available_balance = None
+        if council.wallet_id:
+            try:
+                wallet_repo = WalletRepository(self.session)
+                wallet = await wallet_repo.get_by_id(council.wallet_id)
+                if wallet and wallet.api_key and wallet.secret_key:
+                    if wallet.exchange and wallet.exchange.lower() == "binance":
+                        # Fetch real-time balance from Binance API
+                        is_paper_trading = getattr(council, "is_paper_trading", True)
+                        binance_config = BinanceConfig(
+                            api_key=wallet.api_key,
+                            api_secret=wallet.secret_key,
+                            testnet=is_paper_trading,
+                        )
+                        trading_service = BinanceFuturesTradingService(config=binance_config)
+                        balance_info = await trading_service.aget_account_balance()
+                        available_balance = Decimal(str(balance_info["available_balance"]))
+                        logger.info(
+                            "Synced available balance from wallet API",
+                            council_id=council_id,
+                            available_balance=float(available_balance),
+                        )
+            except Exception as e:
+                logger.warning(
+                    "Failed to sync balance from wallet API, using calculated value",
+                    council_id=council_id,
+                    error=str(e),
+                )
+        # Fallback to calculated value if wallet sync failed or no wallet
+        if available_balance is None:
+            available_balance = max(Decimal(0), total_account_value - total_margin_used)
+
         used_balance = total_margin_used
 
         # Trading Statistics
@@ -112,7 +146,7 @@ class CouncilMetricsService:
         # Hold time statistics
         hold_stats = await self._calculate_hold_time_stats(positions)
 
-        # Update council
+        # Update council with properly rounded values to match database precision
         council.total_account_value = total_account_value
         council.available_balance = available_balance
         council.used_balance = used_balance
@@ -124,13 +158,16 @@ class CouncilMetricsService:
         council.total_funding_fees = total_funding_fees
         council.open_futures_count = len(open_positions)
         council.closed_futures_count = len(closed_positions)
-        council.average_leverage = avg_leverage
-        council.average_confidence = avg_confidence
+        # Round to match NUMERIC(5,2) precision and cap at max value
+        council.average_leverage = min(round(avg_leverage, 2), Decimal("999.99"))
+        # Round to match NUMERIC(5,4) precision
+        council.average_confidence = round(avg_confidence, 4)
         council.biggest_win = biggest_win
         council.biggest_loss = biggest_loss
-        council.long_hold_pct = hold_stats["long_pct"]
-        council.short_hold_pct = hold_stats["short_pct"]
-        council.flat_hold_pct = hold_stats["flat_pct"]
+        # Already capped and normalized in _calculate_hold_time_stats
+        council.long_hold_pct = round(hold_stats["long_pct"], 2)
+        council.short_hold_pct = round(hold_stats["short_pct"], 2)
+        council.flat_hold_pct = round(hold_stats["flat_pct"], 2)
 
         # Update legacy fields for backwards compatibility
         council.current_capital = total_account_value
@@ -312,10 +349,25 @@ class CouncilMetricsService:
         total_time_decimal = Decimal(total_time)
         long_pct = (long_time / total_time_decimal * 100) if total_time_decimal > 0 else Decimal(0)
         short_pct = (short_time / total_time_decimal * 100) if total_time_decimal > 0 else Decimal(0)
-        flat_pct = 100 - long_pct - short_pct
+
+        # Cap percentages at 100% (can exceed if positions overlap)
+        # This prevents database overflow errors with NUMERIC(5,2) columns
+        long_pct = min(long_pct, Decimal(100))
+        short_pct = min(short_pct, Decimal(100))
+
+        # Normalize if total exceeds 100%
+        total_pct = long_pct + short_pct
+        if total_pct > 100:
+            # Scale down proportionally
+            scale_factor = Decimal(100) / total_pct
+            long_pct = long_pct * scale_factor
+            short_pct = short_pct * scale_factor
+
+        flat_pct = Decimal(100) - long_pct - short_pct
+        flat_pct = max(Decimal(0), flat_pct)  # Ensure non-negative
 
         return {
             "long_pct": long_pct,
             "short_pct": short_pct,
-            "flat_pct": max(Decimal(0), flat_pct),  # Ensure non-negative
+            "flat_pct": flat_pct,
         }

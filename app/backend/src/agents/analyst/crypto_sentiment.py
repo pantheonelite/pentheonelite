@@ -263,6 +263,31 @@ Focus on sentiment as a leading indicator of price movements."""
 
         Remember: Sentiment analysis for FUTURES means identifying directional bias (LONG/SHORT)
         and understanding funding rate implications. Be contrarian at extremes.
+
+        CRITICAL: You MUST respond with valid JSON matching this exact structure:
+        {{
+            "sentiment": "VERY_POSITIVE" | "POSITIVE" | "NEUTRAL" | "NEGATIVE" | "VERY_NEGATIVE",
+            "recommendation": "LONG" | "SHORT" | "HOLD",
+            "confidence": 0.0-1.0,
+            "reasoning": "string explaining your sentiment analysis",
+            "social_sentiment": 0.0-1.0,
+            "news_sentiment": 0.0-1.0,
+            "fear_greed_index": 0.0-1.0,
+            "community_engagement": 0.0-1.0,
+            "influencer_impact": 0.0-1.0,
+            "market_psychology": 0.0-1.0,
+            "risk_assessment": "string",
+            "key_insights": ["string", "string"],
+            "leverage_sentiment": "BULLISH_LEVERAGE" | "BEARISH_LEVERAGE" | "CAUTIOUS" or null,
+            "funding_sentiment": "LONG_EXPENSIVE" | "SHORT_EXPENSIVE" | "BALANCED" or null,
+            "entry_price": number or null,
+            "stop_loss": number or null,
+            "take_profit_short": number or null,
+            "take_profit_mid": number or null,
+            "take_profit_long": number or null
+        }}
+
+        Return ONLY valid JSON, no other text before or after.
         """
 
         try:

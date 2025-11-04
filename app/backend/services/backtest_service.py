@@ -6,8 +6,6 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import structlog
-from app.backend.services.graph import GraphService
-from app.backend.services.portfolio import PortfolioService
 from dateutil.relativedelta import relativedelta
 
 logger = structlog.get_logger(__name__)
@@ -21,6 +19,8 @@ def get_company_news(ticker, end_date, start_date=None, limit=1000, api_key=None
 
 def get_price_data(ticker, start_date, end_date, api_key=None):
     """Mock function for getting price data."""
+    import pandas as pd
+
     return pd.DataFrame()
 
 
@@ -36,6 +36,10 @@ def get_financial_metrics(ticker, end_date, limit=10, api_key=None):
 def get_insider_trades(ticker, end_date, start_date=None, limit=1000, api_key=None):
     """Mock function for getting insider trades."""
     return []
+
+
+from app.backend.services.graph import GraphService
+from app.backend.services.portfolio import PortfolioService
 
 
 class BacktestService:

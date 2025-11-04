@@ -217,7 +217,7 @@ class BaseNode(ABC):
             if "error_messages" not in state:
                 state["error_messages"] = []
             state["error_messages"].append(f"Node {self.name}: {e!s}")
-            logger.exception("Failed execution of %s", self.name)
+            logger.error("Failed execution of %s", self.name)
             return state
 
     def get_node_info(self) -> dict[str, Any]:

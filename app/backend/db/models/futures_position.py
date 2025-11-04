@@ -74,6 +74,16 @@ class FuturesPosition(SQLModel, table=True):
     confidence: Decimal | None = Field(default=None, sa_column=Column(Numeric(5, 4), nullable=True))
     agent_reasoning: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
 
+    # Exit Plan (Stop Loss & Take Profit)
+    stop_loss_price: Decimal | None = Field(default=None, sa_column=Column(Numeric(20, 8), nullable=True))
+    stop_loss_order_id: str | None = Field(default=None, sa_column=Column(String(100), nullable=True))
+    take_profit_short: Decimal | None = Field(default=None, sa_column=Column(Numeric(20, 8), nullable=True))
+    take_profit_short_order_id: str | None = Field(default=None, sa_column=Column(String(100), nullable=True))
+    take_profit_mid: Decimal | None = Field(default=None, sa_column=Column(Numeric(20, 8), nullable=True))
+    take_profit_mid_order_id: str | None = Field(default=None, sa_column=Column(String(100), nullable=True))
+    take_profit_long: Decimal | None = Field(default=None, sa_column=Column(Numeric(20, 8), nullable=True))
+    take_profit_long_order_id: str | None = Field(default=None, sa_column=Column(String(100), nullable=True))
+
     # Metadata
     created_at: datetime | None = Field(
         default=None, sa_column=Column(DateTime(timezone=True), server_default=text("now()"), nullable=False)
