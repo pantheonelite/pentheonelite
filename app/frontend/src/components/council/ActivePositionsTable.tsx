@@ -96,9 +96,9 @@ export function ActivePositionsTable({ positions }: Props) {
             </tr>
           </thead>
           <tbody className="divide-y divide-pantheon-border">
-            {positions.map((position) => (
+            {positions.map((position, index) => (
               <tr
-                key={position.id}
+                key={`${position.id}-${index}-${position.symbol}-${position.opened_at}`}
                 className="hover:bg-pantheon-cosmic-bg/50 transition-colors"
               >
                 <td className="py-4 px-6">

@@ -27,6 +27,7 @@ from app.backend.api.utils.agent_metadata import create_agent_info, normalize_ag
 from app.backend.api.utils.error_handling import handle_repository_errors
 from app.backend.client.aster import AsterClient
 from app.backend.client.binance import BinanceClient
+from app.backend.config.binance import BinanceConfig
 from app.backend.db.models import Council, Wallet
 from app.backend.db.models.futures_position import FuturesPosition
 from app.backend.db.repositories.wallet_repository import WalletRepository
@@ -171,7 +172,11 @@ async def get_system_councils_activity(
                             entry_price=float(p.entry_price),
                             exit_price=float(p.mark_price) if p.mark_price else None,
                             pnl=float(p.realized_pnl) if p.realized_pnl else None,
-                            pnl_percentage=None,
+                            pnl_percentage=(
+                                float((p.realized_pnl / (p.entry_price * abs(p.position_amt))) * 100)
+                                if p.realized_pnl is not None and p.entry_price > 0 and p.position_amt != 0
+                                else None
+                            ),
                             status="closed",
                             opened_at=p.opened_at,
                             closed_at=p.closed_at,
@@ -278,7 +283,11 @@ async def get_council_overview(
                     entry_price=float(p.entry_price),
                     exit_price=float(p.mark_price) if p.mark_price else None,
                     pnl=float(p.realized_pnl) if p.realized_pnl else None,
-                    pnl_percentage=None,  # Calculate if needed
+                    pnl_percentage=(
+                        float((p.realized_pnl / (p.entry_price * abs(p.position_amt))) * 100)
+                        if p.realized_pnl is not None and p.entry_price > 0 and p.position_amt != 0
+                        else None
+                    ),
                     status="closed",
                     opened_at=p.opened_at,
                     closed_at=p.closed_at,
@@ -381,7 +390,11 @@ async def get_council_trades(
     council_id: int,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ):
-    """Get recent closed trades for a council (from new position-based tables)."""
+    """
+    Get recent closed trades for a council from wallet API.
+
+    Falls back to database if wallet is not available.
+    """
     council_repo = uow.get_repository(Council)
     council = await council_repo.get_council_by_id(council_id)
 
@@ -389,6 +402,150 @@ async def get_council_trades(
         raise HTTPException(status_code=404, detail="Council not found")
 
     if council.trading_type == "futures":
+        # Try to get trades from wallet API first
+        wallet = None
+        client = None
+        if council.wallet_id:
+            wallet_repo = WalletRepository(uow.session)
+            wallet = await wallet_repo.get_by_id(council.wallet_id)
+            if wallet and wallet.is_active and wallet.api_key and wallet.secret_key:
+                try:
+                    # Initialize client with wallet credentials
+                    if council.trading_mode == "paper" and wallet.exchange.lower() == "binance":
+                        config = BinanceConfig(
+                            api_key=wallet.api_key,
+                            api_secret=wallet.secret_key,
+                            testnet=True,
+                        )
+                        client = BinanceClient(config)
+                    elif council.trading_mode == "real" and wallet.exchange.lower() == "aster":
+                        client = AsterClient(api_key=wallet.api_key, api_secret=wallet.secret_key)
+                except Exception as e:
+                    logger.warning(
+                        "Failed to initialize client with wallet credentials, falling back to database",
+                        council_id=council_id,
+                        wallet_id=wallet.id,
+                        error=str(e),
+                    )
+
+        # Try to get trades from wallet API
+        if client and council.trading_mode == "paper":
+            try:
+                # Get symbols from database to know which symbols to query
+                from app.backend.db.repositories.futures_position_repository import FuturesPositionRepository
+
+                futures_repo = FuturesPositionRepository(uow.session)
+                
+                # Get all unique symbols from closed positions to query orders
+                all_positions = await futures_repo.find_all_positions(council_id)
+                symbols = list(set(p.symbol for p in all_positions if p.status in ["CLOSED", "LIQUIDATED"]))
+                
+                # If no symbols in database, try to get from wallet positions
+                if not symbols:
+                    try:
+                        positions = await client.aget_positions()
+                        symbols = list(set(pos.symbol for pos in positions))
+                    except Exception:
+                        pass
+                
+                # Get all orders from wallet API for each symbol
+                all_orders = []
+                for symbol in symbols[:10]:  # Limit to 10 symbols to avoid too many API calls
+                    try:
+                        orders = await client.aget_all_orders(symbol=symbol, limit=limit)
+                        all_orders.extend(orders)
+                    except Exception as e:
+                        logger.warning(
+                            "Failed to get orders from wallet API for symbol",
+                            symbol=symbol,
+                            error=str(e),
+                        )
+                
+                # Create a map of closed positions by symbol for P&L lookup
+                closed_positions_map = {p.symbol: p for p in all_positions if p.status in ["CLOSED", "LIQUIDATED"]}
+                
+                # Filter only closed trades:
+                # 1. Orders with reduce_only=True (closing orders)
+                # 2. Orders that match with closed positions in database
+                closed_orders = [
+                    order for order in all_orders
+                    if order.status in ["FILLED", "CANCELED", "EXPIRED"] 
+                    and order.filled_quantity > 0
+                    and (
+                        order.reduce_only  # Closing orders
+                        or order.symbol in closed_positions_map  # Match with closed positions
+                    )
+                ]
+                
+                # Sort by timestamp descending and limit
+                closed_orders.sort(key=lambda x: x.timestamp, reverse=True)
+                closed_orders = closed_orders[:limit]
+                
+                # Convert to TradeRecord format
+                trade_records = []
+                for order in closed_orders:
+                    # Determine side from position_side
+                    if order.position_side == "BOTH":
+                        side = "long" if order.side == "BUY" else "short"
+                    else:
+                        side = order.position_side.lower()
+                    
+                    # Try to get P&L from matching position in database
+                    pnl = None
+                    pnl_percentage = None
+                    entry_price = order.average_price or order.price or 0.0
+                    exit_price = None
+                    closed_at = order.timestamp if order.status == "FILLED" else None
+                    
+                    # Try to match with closed position for accurate P&L data
+                    if order.symbol in closed_positions_map:
+                        position = closed_positions_map[order.symbol]
+                        # Use position's realized_pnl if available
+                        if position.realized_pnl is not None:
+                            pnl = float(position.realized_pnl)
+                            entry_price = float(position.entry_price)
+                            exit_price = float(position.mark_price) if position.mark_price else None
+                            closed_at = position.closed_at
+                            # Only include trades that actually have closed_at (closed positions)
+                            if not closed_at:
+                                continue  # Skip positions without closed_at
+                    
+                    # Only include trades that have closed_at (actually closed)
+                    if not closed_at:
+                        continue  # Skip trades without closed_at
+                    
+                    # Calculate P&L percentage if we have P&L and entry price
+                    if pnl is not None and entry_price > 0 and order.filled_quantity > 0:
+                        cost_basis = entry_price * order.filled_quantity
+                        pnl_percentage = (pnl / cost_basis * 100) if cost_basis > 0 else None
+                    
+                    trade_records.append(
+                        TradeRecord(
+                            id=order.order_id,  # Use order_id as id
+                            symbol=order.symbol,
+                            order_type=order.type,
+                            side=side,
+                            quantity=order.filled_quantity,
+                            entry_price=entry_price,
+                            exit_price=exit_price or (order.average_price if order.reduce_only else None),
+                            pnl=pnl,
+                            pnl_percentage=pnl_percentage,
+                            status="closed",  # Always set to "closed" for closed trades
+                            opened_at=order.timestamp,
+                            closed_at=closed_at,
+                        )
+                    )
+                
+                if trade_records:
+                    return trade_records[:25]
+            except Exception as e:
+                logger.warning(
+                    "Failed to fetch trades from wallet API, falling back to database",
+                    council_id=council_id,
+                    error=str(e),
+                )
+        
+        # Fallback to database
         from app.backend.db.repositories.futures_position_repository import FuturesPositionRepository
 
         futures_repo = FuturesPositionRepository(uow.session)
@@ -404,15 +561,17 @@ async def get_council_trades(
                 entry_price=float(p.entry_price),
                 exit_price=float(p.mark_price) if p.mark_price else None,
                 pnl=float(p.realized_pnl) if p.realized_pnl else None,
-                pnl_percentage=None,
+                pnl_percentage=(
+                    float((p.realized_pnl / (p.entry_price * abs(p.position_amt))) * 100)
+                    if p.realized_pnl is not None and p.entry_price > 0 and p.position_amt != 0
+                    else None
+                ),
                 status="closed",
                 opened_at=p.opened_at,
                 closed_at=p.closed_at,
             )
             for p in closed_positions
         ]
-    # spot
-    # Spot doesn't have traditional "trades" - it's holdings
     return []
 
 
@@ -686,9 +845,10 @@ async def get_council_trading_metrics(council_id: int, uow: UnitOfWorkDep):
 @router.get("/{council_id}/active-positions", response_model=ActivePositionsResponse)
 async def get_council_active_positions(council_id: int, uow: UnitOfWorkDep):
     """
-    Get all active trading positions for a council.
+    Get all active trading positions for a council from wallet API.
 
     Returns open positions with current prices, unrealized PnL, and liquidation prices.
+    Falls back to database if wallet is not available.
     """
     council_repo = uow.get_repository(Council)
 
@@ -700,21 +860,134 @@ async def get_council_active_positions(council_id: int, uow: UnitOfWorkDep):
     active_positions = []
     total_unrealized = 0.0
 
+    # Try to get positions from wallet API first
+    wallet = None
+    client = None
+    if council.wallet_id:
+        wallet_repo = WalletRepository(uow.session)
+        wallet = await wallet_repo.get_by_id(council.wallet_id)
+        if wallet and wallet.is_active and wallet.api_key and wallet.secret_key:
+            try:
+                # Initialize client with wallet credentials
+                if council.trading_mode == "paper" and wallet.exchange.lower() == "binance":
+                    config = BinanceConfig(
+                        api_key=wallet.api_key,
+                        api_secret=wallet.secret_key,
+                        testnet=True,
+                    )
+                    client = BinanceClient(config)
+                elif council.trading_mode == "real" and wallet.exchange.lower() == "aster":
+                    client = AsterClient(api_key=wallet.api_key, api_secret=wallet.secret_key)
+            except Exception as e:
+                logger.warning(
+                    "Failed to initialize client with wallet credentials, falling back to database",
+                    council_id=council_id,
+                    wallet_id=wallet.id,
+                    error=str(e),
+                )
+
     if council.trading_type == "futures":
-        # Get futures positions from new table (direct instantiation)
+        # Try to get positions from wallet API
+        if client:
+            try:
+                # Get positions from wallet API
+                positions = await client.aget_positions()
+                
+                # Map wallet API positions to ActivePosition format
+                for pos in positions:
+                    try:
+                        # Determine side from position_amount sign (for BOTH mode) or position_side
+                        if pos.position_side == "BOTH":
+                            side = "long" if pos.position_amount > 0 else "short"
+                        else:
+                            side = pos.position_side.lower()
+                        
+                        # Calculate unrealized PnL percentage
+                        cost_basis = abs(pos.entry_price * pos.position_amount)
+                        unrealized_pnl_pct = (pos.unrealized_pnl / cost_basis * 100) if cost_basis > 0 else 0.0
+                        
+                        # Calculate notional (position_amount * mark_price)
+                        notional = abs(pos.position_amount * pos.mark_price)
+                        
+                        active_positions.append(
+                            ActivePosition(
+                                id=0,  # No database ID for wallet positions
+                                symbol=pos.symbol,
+                                side=side,
+                                entry_price=pos.entry_price,
+                                current_price=pos.mark_price,
+                                quantity=abs(pos.position_amount),
+                                leverage=pos.leverage,
+                                unrealized_pnl=pos.unrealized_pnl,
+                                unrealized_pnl_percentage=unrealized_pnl_pct,
+                                opened_at=pos.timestamp,  # Use timestamp from API
+                                liquidation_price=pos.liquidation_price,
+                                margin_used=None,  # Not available from API
+                                notional=notional,
+                            )
+                        )
+                        total_unrealized += pos.unrealized_pnl
+                    except Exception as e:
+                        logger.warning(
+                            "Failed to process position from wallet API",
+                            symbol=pos.symbol if hasattr(pos, 'symbol') else 'unknown',
+                            error=str(e),
+                        )
+                
+                # Return positions from wallet API
+                return ActivePositionsResponse(
+                    positions=active_positions,
+                    total_unrealized_pnl=total_unrealized,
+                )
+            except Exception as e:
+                logger.warning(
+                    "Failed to fetch positions from wallet API, falling back to database",
+                    council_id=council_id,
+                    error=str(e),
+                )
+        
+        # Fallback to database
         from app.backend.db.repositories.futures_position_repository import FuturesPositionRepository
 
         futures_repo = FuturesPositionRepository(uow.session)
         positions = await futures_repo.find_open_positions(council_id)
 
         # Initialize appropriate client for price updates
-        if council.trading_mode == "paper":
-            from app.backend.config.binance import BinanceConfig
-
-            config = BinanceConfig(testnet=True)
-            client = BinanceClient(config)
-        else:
-            client = AsterClient()
+        # Use wallet credentials if available, otherwise fall back to environment variables
+        if not client:
+            if council.trading_mode == "paper":
+                # Try wallet credentials first
+                if wallet and wallet.exchange.lower() == "binance":
+                    try:
+                        config = BinanceConfig(
+                            api_key=wallet.api_key,
+                            api_secret=wallet.secret_key,
+                            testnet=True,
+                        )
+                        client = BinanceClient(config)
+                    except Exception as e:
+                        logger.warning(
+                            "Failed to use wallet credentials for fallback, using environment variables",
+                            error=str(e),
+                        )
+                        config = BinanceConfig(testnet=True)
+                        client = BinanceClient(config)
+                else:
+                    config = BinanceConfig(testnet=True)
+                    client = BinanceClient(config)
+            else:
+                # Real trading - try wallet first
+                if wallet and wallet.exchange.lower() == "aster":
+                    try:
+                        client = AsterClient(api_key=wallet.api_key, api_secret=wallet.secret_key)
+                    except Exception as e:
+                        logger.warning(
+                            "Failed to use wallet credentials for fallback, using environment variables",
+                            error=str(e),
+                        )
+                        client = AsterClient()
+                else:
+                    client = AsterClient()
 
         for p in positions:
             try:
@@ -723,12 +996,8 @@ async def get_council_active_positions(council_id: int, uow: UnitOfWorkDep):
                 current_price = float(ticker.price)
 
                 # Calculate unrealized PnL based on current price
-                # For LONG: (current_price - entry_price) * position_amt
-                # For SHORT: (entry_price - current_price) * position_amt
-                # Note: position_amt is positive for LONG, negative for SHORT
                 entry_price = float(p.entry_price)
                 position_amt = float(p.position_amt)
-
                 unrealized_pnl = (current_price - entry_price) * position_amt
 
                 # Calculate percentage based on notional value (with leverage)
@@ -770,13 +1039,12 @@ async def get_council_active_positions(council_id: int, uow: UnitOfWorkDep):
         holdings = await spot_repo.find_active_holdings(council_id)
 
         # Initialize appropriate client
-        if council.trading_mode == "paper":
-            from app.backend.config.binance import BinanceConfig
-
-            config = BinanceConfig(testnet=True)
-            client = BinanceClient(config)
-        else:
-            client = AsterClient()
+        if not client:
+            if council.trading_mode == "paper":
+                config = BinanceConfig(testnet=True)
+                client = BinanceClient(config)
+            else:
+                client = AsterClient()
 
         for h in holdings:
             try:

@@ -5,7 +5,12 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 
 import structlog
+from app.backend.config.binance import BinanceConfig
+from app.backend.db.models.wallet import Wallet
 from app.backend.db.repositories.council_repository import CouncilRepository
+from app.backend.db.repositories.futures_position_repository import FuturesPositionRepository
+from app.backend.db.repositories.wallet_repository import WalletRepository
+from app.backend.services.binance_futures_trading_service import BinanceFuturesTradingService
 from app.backend.services.portfolio_context_service import PortfolioContextService
 from app.backend.src.main import run_crypto_hedge_fund
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,6 +40,8 @@ class DebateService:
         """
         self.session = session
         self.repo = CouncilRepository(session)
+        self.wallet_repo = WalletRepository(session)
+        self.futures_repo = FuturesPositionRepository(session)
 
     async def aexecute_debate(
         self,
@@ -94,18 +101,20 @@ class DebateService:
                     "error": "No agent keys found in system council configuration",
                 }
 
-            # Fetch real portfolio context for standard workflow
-            portfolio_service = PortfolioContextService(self.session)
-            portfolio_context = await portfolio_service.aget_portfolio_context(
+            # Try to fetch from wallet API first, fallback to database
+            portfolio_context = await self._aget_portfolio_context_from_wallet_or_db(
                 council=council,
                 symbols=symbols,
             )
+
+            # Fetch realized gains from closed positions
+            realized_gains = await self._aget_realized_gains(council.id, symbols)
 
             # Convert to legacy format for standard workflow compatibility
             portfolio = {
                 "cash": portfolio_context.get("available_balance", float(council.initial_capital)),
                 "positions": {},
-                "realized_gains": dict.fromkeys(symbols, 0.0),
+                "realized_gains": realized_gains,
                 "total_value": portfolio_context.get("total_value", float(council.initial_capital)),
                 "unrealized_pnl": portfolio_context.get("unrealized_pnl", 0.0),
             }
@@ -184,6 +193,279 @@ class DebateService:
         except Exception as e:
             logger.exception("Error executing agent debate", error=str(e))
             return {"success": False, "error": str(e)}
+
+    async def _aget_realized_gains(self, council_id: int, symbols: list[str]) -> dict[str, float]:
+        """
+        Fetch realized gains from closed positions for each symbol.
+
+        Parameters
+        ----------
+        council_id : int
+            Council ID
+        symbols : list[str]
+            Trading symbols to fetch realized gains for
+
+        Returns
+        -------
+        dict[str, float]
+            Realized gains per symbol (total of long + short)
+        """
+        try:
+            # Fetch all closed positions for this council
+            closed_positions = await self.futures_repo.find_closed_positions(council_id, limit=1000)
+
+            # Initialize realized gains for all symbols
+            realized_gains = {symbol: 0.0 for symbol in symbols}
+
+            # Sum realized PnL by symbol
+            for pos in closed_positions:
+                if pos.symbol in symbols and pos.realized_pnl:
+                    realized_gains[pos.symbol] += float(pos.realized_pnl)
+
+            logger.info(
+                "Fetched realized gains from closed positions",
+                council_id=council_id,
+                symbols=symbols,
+                gains={k: v for k, v in realized_gains.items() if v != 0.0},
+            )
+
+            return realized_gains
+        except Exception as e:
+            logger.warning(
+                "Failed to fetch realized gains from closed positions, using defaults",
+                council_id=council_id,
+                error=str(e),
+            )
+            # Return default (all zeros) on error
+            return {symbol: 0.0 for symbol in symbols}
+
+    async def _aget_portfolio_context_from_wallet_or_db(
+        self,
+        council,
+        symbols: list[str],
+    ) -> dict:
+        """
+        Fetch portfolio context from wallet API if available, otherwise from database.
+
+        Parameters
+        ----------
+        council : Council
+            Council object with wallet_id
+        symbols : list[str]
+            Trading symbols to include in context
+
+        Returns
+        -------
+        dict
+            Portfolio context with normalized positions and balance from wallet or database
+        """
+        # Try to fetch from wallet API first
+        if council.wallet_id:
+            try:
+                wallet = await self.wallet_repo.get_by_id(council.wallet_id)
+                if wallet and wallet.is_active and wallet.api_key and wallet.secret_key:
+                    logger.info(
+                        "Fetching portfolio context from wallet API",
+                        council_id=council.id,
+                        wallet_id=wallet.id,
+                        exchange=wallet.exchange,
+                    )
+                    portfolio_context = await self._afetch_portfolio_from_wallet(
+                        wallet=wallet,
+                        council=council,
+                        symbols=symbols,
+                    )
+                    if portfolio_context:
+                        return portfolio_context
+                    logger.warning(
+                        "Failed to fetch from wallet API, falling back to database",
+                        council_id=council.id,
+                    )
+            except Exception as e:
+                logger.warning(
+                    "Error fetching from wallet API, falling back to database",
+                    council_id=council.id,
+                    error=str(e),
+                )
+
+        # Fallback to database portfolio context
+        logger.info(
+            "Fetching portfolio context from database",
+            council_id=council.id,
+        )
+        portfolio_service = PortfolioContextService(self.session)
+        return await portfolio_service.aget_portfolio_context(
+            council=council,
+            symbols=symbols,
+        )
+
+    async def _afetch_portfolio_from_wallet(
+        self,
+        wallet: Wallet,
+        council,
+        symbols: list[str],
+    ) -> dict | None:
+        """
+        Fetch portfolio context from wallet API (Binance or Aster).
+
+        Parameters
+        ----------
+        wallet : Wallet
+            Wallet object with API credentials
+        council : Council
+            Council object
+        symbols : list[str]
+            Trading symbols to include
+
+        Returns
+        -------
+        dict | None
+            Portfolio context if successful, None otherwise
+        """
+        try:
+            exchange = wallet.exchange.lower() if wallet.exchange else "binance"
+
+            if exchange == "binance":
+                return await self._afetch_portfolio_from_binance(
+                    wallet=wallet,
+                    council=council,
+                    symbols=symbols,
+                )
+            elif exchange == "aster":
+                # TODO: Implement Aster portfolio fetch
+                logger.warning(
+                    "Aster portfolio fetch not yet implemented, falling back to database",
+                    council_id=council.id,
+                )
+                return None
+            else:
+                logger.warning(
+                    "Unknown exchange type, falling back to database",
+                    exchange=exchange,
+                    council_id=council.id,
+                )
+                return None
+        except Exception as e:
+            logger.exception(
+                "Error fetching portfolio from wallet API",
+                wallet_id=wallet.id,
+                exchange=wallet.exchange,
+                error=str(e),
+            )
+            return None
+
+    async def _afetch_portfolio_from_binance(
+        self,
+        wallet: Wallet,
+        council,
+        symbols: list[str],
+    ) -> dict:
+        """
+        Fetch portfolio context from Binance Futures API.
+
+        Parameters
+        ----------
+        wallet : Wallet
+            Wallet object with Binance API credentials
+        council : Council
+            Council object
+        symbols : list[str]
+            Trading symbols to include
+
+        Returns
+        -------
+        dict
+            Portfolio context with balance and positions from Binance API
+        """
+        # Create Binance config from wallet credentials
+        # Use testnet if council is paper trading, otherwise production
+        is_testnet = getattr(council, "is_paper_trading", True)
+        binance_config = BinanceConfig(
+            api_key=wallet.api_key,
+            api_secret=wallet.secret_key,
+            testnet=is_testnet,
+        )
+
+        # Create trading service and fetch balance
+        trading_service = BinanceFuturesTradingService(config=binance_config)
+        balance_info = await trading_service.aget_account_balance()
+
+        # Fetch positions from API
+        positions = {}
+        try:
+            # Get all positions from Binance
+            account_info = await trading_service.client.aget_account_info()
+            binance_positions = account_info.positions or []
+
+            # Filter positions for requested symbols and non-zero amounts
+            for pos in binance_positions:
+                symbol = pos.get("symbol", "")
+                position_amt = float(pos.get("positionAmt", 0.0))
+
+                # Only include positions for requested symbols and non-zero amounts
+                if symbol in symbols and abs(position_amt) > 0:
+                    entry_price = float(pos.get("entryPrice", 0.0))
+                    mark_price = float(pos.get("markPrice", entry_price))
+                    unrealized_pnl = float(pos.get("unRealizedProfit", 0.0))
+                    leverage = int(pos.get("leverage", 1))
+                    side = "LONG" if position_amt > 0 else "SHORT"
+
+                    # Calculate notional and margin
+                    position_amt_abs = abs(position_amt)
+                    notional = position_amt_abs * entry_price * leverage
+                    margin_used = notional / leverage if leverage > 0 else notional
+
+                    positions[symbol] = {
+                        "side": side,
+                        "position_amt": position_amt_abs,
+                        "entry_price": entry_price,
+                        "current_price": mark_price,
+                        "mark_price": mark_price,
+                        "unrealized_pnl": unrealized_pnl,
+                        "leverage": leverage,
+                        "notional": notional,
+                        "liquidation_price": float(pos.get("liquidationPrice", 0.0)) if pos.get("liquidationPrice") else None,
+                        "margin_used": margin_used,
+                        "has_exit_plan": False,  # API doesn't provide exit plans
+                    }
+
+        except Exception as e:
+            logger.warning(
+                "Failed to fetch positions from Binance API, using balance only",
+                error=str(e),
+            )
+
+        # Calculate portfolio metrics
+        total_balance = float(balance_info["total_balance"])
+        available_balance = float(balance_info["available_balance"])
+        unrealized_pnl = float(balance_info.get("unrealized_pnl", 0.0))
+        total_value = total_balance
+        total_notional = sum(pos.get("notional", 0.0) for pos in positions.values())
+        total_margin_used = sum(pos.get("margin_used", 0.0) for pos in positions.values())
+        margin_usage_ratio = float(total_margin_used / available_balance) if available_balance > 0 else 0.0
+
+        portfolio_context = {
+            "council_id": council.id,
+            "initial_capital": float(council.initial_capital),
+            "available_balance": available_balance,
+            "total_value": total_value,
+            "unrealized_pnl": unrealized_pnl,
+            "positions": positions,
+            "total_positions": len(positions),
+            "total_notional": total_notional,
+            "margin_usage_ratio": margin_usage_ratio,
+            "liquidation_risk": "unknown",  # API doesn't provide risk assessment
+        }
+
+        logger.info(
+            "Fetched portfolio context from Binance API",
+            council_id=council.id,
+            total_balance=total_balance,
+            available_balance=available_balance,
+            positions_count=len(positions),
+        )
+
+        return portfolio_context
 
     def _parse_standard_workflow_signals(  # noqa: C901, PLR0912
         self, workflow_result: dict
@@ -470,7 +752,7 @@ class DebateService:
         logger.info("Determining consensus per symbol", symbols=list(signals.keys()))
 
         consensuses = []
-
+        
         # Process each symbol independently
         for symbol, agents_dict in signals.items():
             if not agents_dict:
@@ -482,10 +764,14 @@ class DebateService:
             agent_votes = {}
             total_confidence = 0.0
 
+            final_action = {"action": "HOLD", "direction": "NONE", "confidence": 0.0}
             for agent_id, signal in agents_dict.items():
                 # Use direction field (LONG/SHORT/NONE/CLOSE) for futures trading
                 direction = signal.get("direction", "").upper()
                 action = signal.get("action", "hold").lower()
+                
+                if agent_id == 'crypto_risk_manager':
+                    final_action = {"action": action, "direction": direction, "confidence": signal.get("confidence", 0.5)}
 
                 # Handle CLOSE action explicitly
                 if action == "close" or direction == "CLOSE":
@@ -519,30 +805,9 @@ class DebateService:
                 total_confidence += confidence
 
             # Determine majority for this symbol based on LONG/SHORT/CLOSE votes
-            total_votes = sum(votes.values())
-            decision = "HOLD"
-            direction = "NONE"
-
-            if total_votes > 0:
-                long_ratio = votes["long"] / total_votes
-                short_ratio = votes["short"] / total_votes
-                close_ratio = votes["close"] / total_votes
-
-                # CLOSE takes priority if majority votes to exit
-                if close_ratio >= threshold:
-                    decision = "CLOSE"
-                    direction = "CLOSE"
-                elif long_ratio >= threshold:
-                    decision = "BUY"
-                    direction = "LONG"
-                elif short_ratio >= threshold:
-                    decision = "SELL"
-                    direction = "SHORT"
-                else:
-                    decision = "HOLD"
-                    direction = "NONE"
-
-            avg_confidence = total_confidence / len(agents_dict) if agents_dict else 0.0
+            decision = final_action["action"]
+            direction = final_action["direction"]
+            avg_confidence = final_action["confidence"]
 
             # Store consensus message for this symbol
             await self.repo.create_debate_message(
@@ -564,7 +829,7 @@ class DebateService:
             reasoning = (
                 f"Consensus reached for {symbol} with {decision} ({direction}) decision. "
                 f"Agent votes: L={votes['long']}, S={votes['short']}, H={votes['hold']}, C={votes['close']}. "
-                f"Avg confidence: {avg_confidence:.2%}. Threshold: {threshold:.0%}"
+                f"Final confidence: {avg_confidence:.2%}. Threshold: {threshold:.0%}"
             )
 
             consensus_record = await self.repo.create_consensus_decision(

@@ -338,6 +338,28 @@ class UnifiedTradingService:
 
             normalized_side: PositionSide = "LONG" if side == "BUY" else "SHORT"
 
+            # Check for existing position from wallet API before placing order
+            # If position exists, return hold status instead of raising error
+            await self._initialize_client()
+            
+            existing_position = await self._aget_existing_position_from_wallet(symbol, normalized_side)
+            
+            if existing_position:
+                logger.info(
+                    "Position already exists in wallet, returning hold status",
+                    council_id=self.council.id,
+                    symbol=symbol,
+                    side=normalized_side,
+                    position_amount=float(existing_position.get("amount", 0)),
+                    platform=self.platform,
+                )
+                return {
+                    "success": True,
+                    "action": "hold",
+                    "reason": "Position already exists in wallet",
+                    "platform": self.platform,
+                }
+
             logger.info(
                 "Executing futures trade",
                 symbol=symbol,
@@ -375,43 +397,65 @@ class UnifiedTradingService:
                     avg_px = Decimal(str(order.average_price or current_price))
                     isolated_margin = (filled_qty * avg_px) / Decimal(leverage)
 
-            # Create position in database (updates are not allowed by policy)
+            # Check if position already exists in database before creating
+            # If exists, sync from wallet API instead of creating new one
             avg_price = (
                 order.average_price
                 if order.average_price
                 else (exchange_position.entry_price if exchange_position else current_price)
             )
 
-            # Enforce policy: reject if an open position already exists for this council/symbol/side
-            existing = await self.futures_service.repo.find_by_symbol_and_side(
+            # Check database for existing position
+            existing_db_position = await self.futures_service.repo.find_by_symbol_and_side(
                 council_id=self.council.id,
                 symbol=symbol,
                 position_side=api_position_side,
                 status="OPEN",
             )
-            if existing:
-                raise ValueError(
-                    "Position updates are not allowed per trading policy. Agents must close existing positions before opening new ones in the same direction. "
-                    f"Council {self.council.id}, Symbol: {symbol}, Side: {api_position_side}"
-                )
 
-            position = await self.futures_service.aopen_position(
-                council_id=self.council.id,
-                symbol=symbol,
-                position_side=api_position_side,
-                position_amt=Decimal(str(order.filled_quantity or order.quantity)),
-                entry_price=Decimal(str(avg_price)),
-                leverage=leverage,
-                margin_type="CROSSED",
-                platform=self.platform,
-                trading_mode=self.council.trading_mode,
-                liquidation_price=liquidation_price,
-                isolated_margin=isolated_margin,
-                confidence=confidence,
-                agent_reasoning=agent_reasoning,
-                external_position_id=str(order.order_id),
-            )
-            was_created = True
+            if existing_db_position:
+                # Position exists in database, sync from wallet API
+                logger.info(
+                    "Position already exists in database, syncing from wallet API",
+                    position_id=existing_db_position.id,
+                    symbol=symbol,
+                    side=api_position_side,
+                )
+                
+                # Update position from exchange data
+                if exchange_position:
+                    existing_db_position.position_amt = Decimal(str(exchange_position.position_amount))
+                    existing_db_position.mark_price = Decimal(str(exchange_position.mark_price))
+                    existing_db_position.unrealized_profit = Decimal(str(exchange_position.unrealized_pnl))
+                    existing_db_position.leverage = exchange_position.leverage
+                    if exchange_position.liquidation_price:
+                        existing_db_position.liquidation_price = Decimal(str(exchange_position.liquidation_price))
+                    existing_db_position.updated_at = datetime.now(UTC)
+                
+                await self.session.commit()
+                await self.session.refresh(existing_db_position)
+                
+                position = existing_db_position
+                was_created = False
+            else:
+                # Create new position in database
+                position = await self.futures_service.aopen_position(
+                    council_id=self.council.id,
+                    symbol=symbol,
+                    position_side=api_position_side,
+                    position_amt=Decimal(str(order.filled_quantity or order.quantity)),
+                    entry_price=Decimal(str(avg_price)),
+                    leverage=leverage,
+                    margin_type="CROSSED",
+                    platform=self.platform,
+                    trading_mode=self.council.trading_mode,
+                    liquidation_price=liquidation_price,
+                    isolated_margin=isolated_margin,
+                    confidence=confidence,
+                    agent_reasoning=agent_reasoning,
+                    external_position_id=str(order.order_id),
+                )
+                was_created = True
 
             # Log order
             await self._log_order(order, position.id, None)
@@ -773,6 +817,9 @@ class UnifiedTradingService:
             Result with success, position_id, order_id
         """
         try:
+            # Initialize client if not already initialized
+            await self._initialize_client()
+            
             # Determine position side based on platform
             if position_side is None:
                 position_side = "BOTH" if self.platform == "binance" else None
@@ -827,6 +874,135 @@ class UnifiedTradingService:
         except Exception as e:
             logger.exception("Failed to close position", symbol=symbol, error=str(e))
             return {"success": False, "error": str(e)}
+
+    async def _aget_existing_position_from_wallet(
+        self, symbol: str, normalized_side: PositionSide
+    ) -> dict[str, float | str] | None:
+        """
+        Get existing position from wallet API for a symbol and side.
+
+        Parameters
+        ----------
+        symbol : str
+            Trading symbol
+        normalized_side : PositionSide
+            Position side (LONG, SHORT, or BOTH)
+
+        Returns
+        -------
+        dict[str, float | str] | None
+            Position data if exists, None otherwise
+        """
+        try:
+            if self.platform == "binance":
+                # Get positions from Binance API
+                positions = await self.client.aget_positions(symbol)
+                
+                # Find position matching the symbol and side
+                for pos in positions:
+                    # For Binance, position_side can be "BOTH", "LONG", or "SHORT"
+                    # Check if position matches the desired side
+                    if pos.symbol == symbol:
+                        # For "BOTH" mode, check sign of position_amount
+                        # For explicit LONG/SHORT, check position_side
+                        if pos.position_side == "BOTH":
+                            # Determine side from position_amount sign
+                            if normalized_side == "LONG" and pos.position_amount > 0:
+                                return {
+                                    "symbol": pos.symbol,
+                                    "position_side": pos.position_side,
+                                    "amount": pos.position_amount,
+                                    "entry_price": pos.entry_price,
+                                    "mark_price": pos.mark_price,
+                                    "unrealized_pnl": pos.unrealized_pnl,
+                                    "leverage": pos.leverage,
+                                }
+                            elif normalized_side == "SHORT" and pos.position_amount < 0:
+                                return {
+                                    "symbol": pos.symbol,
+                                    "position_side": pos.position_side,
+                                    "amount": abs(pos.position_amount),
+                                    "entry_price": pos.entry_price,
+                                    "mark_price": pos.mark_price,
+                                    "unrealized_pnl": pos.unrealized_pnl,
+                                    "leverage": pos.leverage,
+                                }
+                        elif pos.position_side == normalized_side:
+                            # Direct match for explicit LONG/SHORT
+                            return {
+                                "symbol": pos.symbol,
+                                "position_side": pos.position_side,
+                                "amount": abs(pos.position_amount),
+                                "entry_price": pos.entry_price,
+                                "mark_price": pos.mark_price,
+                                "unrealized_pnl": pos.unrealized_pnl,
+                                "leverage": pos.leverage,
+                            }
+            elif self.platform == "aster":
+                # TODO: Implement Aster position fetching
+                logger.warning(
+                    "Aster position fetching not yet implemented, falling back to database check",
+                    symbol=symbol,
+                )
+                # Fallback to database check for Aster
+                existing = await self.futures_service.repo.find_by_symbol_and_side(
+                    council_id=self.council.id,
+                    symbol=symbol,
+                    position_side=normalized_side,
+                    status="OPEN",
+                )
+                if existing:
+                    return {
+                        "symbol": existing.symbol,
+                        "position_side": existing.position_side,
+                        "amount": float(existing.position_amt),
+                        "entry_price": float(existing.entry_price),
+                        "mark_price": float(existing.mark_price) if existing.mark_price else float(existing.entry_price),
+                        "unrealized_pnl": float(existing.unrealized_profit or 0),
+                        "leverage": existing.leverage,
+                    }
+            
+            return None
+        except Exception as e:
+            logger.warning(
+                "Failed to fetch position from wallet API, falling back to database check",
+                symbol=symbol,
+                side=normalized_side,
+                error=str(e),
+            )
+            # Fallback to database check on error
+            try:
+                existing = await self.futures_service.repo.find_by_symbol_and_side(
+                    council_id=self.council.id,
+                    symbol=symbol,
+                    position_side=normalized_side if normalized_side != "BOTH" else "LONG",  # Try LONG first
+                    status="OPEN",
+                )
+                if not existing and normalized_side == "BOTH":
+                    # Try SHORT if LONG didn't work
+                    existing = await self.futures_service.repo.find_by_symbol_and_side(
+                        council_id=self.council.id,
+                        symbol=symbol,
+                        position_side="SHORT",
+                        status="OPEN",
+                    )
+                if existing:
+                    return {
+                        "symbol": existing.symbol,
+                        "position_side": existing.position_side,
+                        "amount": float(existing.position_amt),
+                        "entry_price": float(existing.entry_price),
+                        "mark_price": float(existing.mark_price) if existing.mark_price else float(existing.entry_price),
+                        "unrealized_pnl": float(existing.unrealized_profit or 0),
+                        "leverage": existing.leverage,
+                    }
+            except Exception as db_error:
+                logger.warning(
+                    "Database fallback also failed",
+                    symbol=symbol,
+                    error=str(db_error),
+                )
+            return None
 
     def _parse_symbol(self, symbol: str) -> tuple[str, str]:
         """Parse symbol into base and quote assets."""

@@ -60,9 +60,23 @@ export function RecentTradesTable({ trades }: Props) {
   };
 
   const getHoldingTime = (openedAt: string, closedAt?: string) => {
+    if (!openedAt) return "-";
+    
     const startDate = new Date(openedAt);
     const endDate = closedAt ? new Date(closedAt) : new Date();
+    
+    // Validate dates
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      return "-";
+    }
+    
     const diffMs = endDate.getTime() - startDate.getTime();
+    
+    // Handle negative time (invalid data)
+    if (diffMs < 0) {
+      return "-";
+    }
+    
     const diffMins = Math.floor(diffMs / 60000);
     const diffHours = Math.floor(diffMs / 3600000);
     const diffDays = Math.floor(diffMs / 86400000);
@@ -114,6 +128,12 @@ export function RecentTradesTable({ trades }: Props) {
                 Qty
               </th>
               <th className="text-right py-4 px-6 text-sm font-semibold text-pantheon-text-secondary uppercase tracking-wide">
+                P&L
+              </th>
+              <th className="text-right py-4 px-6 text-sm font-semibold text-pantheon-text-secondary uppercase tracking-wide">
+                P&L %
+              </th>
+              <th className="text-right py-4 px-6 text-sm font-semibold text-pantheon-text-secondary uppercase tracking-wide">
                 Holding Time
               </th>
               <th className="text-right py-4 px-6 text-sm font-semibold text-pantheon-text-secondary uppercase tracking-wide">
@@ -161,6 +181,37 @@ export function RecentTradesTable({ trades }: Props) {
                 </td>
                 <td className="py-4 px-6 text-right text-pantheon-text-secondary text-sm">
                   {trade.quantity.toFixed(4)}
+                </td>
+                <td className="py-4 px-6 text-right text-sm font-mono">
+                  {trade.pnl !== undefined && trade.pnl !== null ? (
+                    <span
+                      className={
+                        trade.pnl >= 0
+                          ? "text-pantheon-secondary-500"
+                          : "text-pantheon-accent-red"
+                      }
+                    >
+                      {formatCurrency(trade.pnl)}
+                    </span>
+                  ) : (
+                    <span className="text-pantheon-text-secondary">-</span>
+                  )}
+                </td>
+                <td className="py-4 px-6 text-right text-sm font-mono">
+                  {trade.pnl_percentage !== undefined && trade.pnl_percentage !== null ? (
+                    <span
+                      className={
+                        trade.pnl_percentage >= 0
+                          ? "text-pantheon-secondary-500"
+                          : "text-pantheon-accent-red"
+                      }
+                    >
+                      {trade.pnl_percentage >= 0 ? "+" : ""}
+                      {trade.pnl_percentage.toFixed(2)}%
+                    </span>
+                  ) : (
+                    <span className="text-pantheon-text-secondary">-</span>
+                  )}
                 </td>
                 <td className="py-4 px-6 text-right text-pantheon-text-primary text-sm">
                   {getHoldingTime(trade.opened_at, trade.closed_at)}

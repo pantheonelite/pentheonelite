@@ -600,6 +600,7 @@ class BinanceClient:
                 quantity=quantity,
             )
             return self._parse_order_data(data)
+
         except Exception as e:
             logger.exception("Failed to place order", symbol=symbol, side=side, error=str(e))
             raise
@@ -792,7 +793,57 @@ class BinanceClient:
             logger.exception("Failed to get open orders", symbol=symbol, error=str(e))
             raise
 
-    async def aclose_position(self, symbol: str, position_side: str = "BOTH") -> BinanceFuturesOrder:
+    async def aget_all_orders(
+        self,
+        symbol: str | None = None,
+        order_id: int | None = None,
+        start_time: int | None = None,
+        end_time: int | None = None,
+        limit: int = 500,
+    ) -> list[BinanceFuturesOrder]:
+        """
+        Get all Futures orders (including closed orders).
+
+        Parameters
+        ----------
+        symbol : str | None
+            Trading symbol (required for allOrders endpoint)
+        order_id : int | None
+            Order ID (optional)
+        start_time : int | None
+            Start time in milliseconds (optional)
+        end_time : int | None
+            End time in milliseconds (optional)
+        limit : int
+            Maximum number of orders to return (default 500, max 1000)
+
+        Returns
+        -------
+        list[BinanceFuturesOrder]
+            List of all orders (open and closed)
+        """
+        try:
+            if not symbol:
+                # If no symbol, get orders for all symbols by making multiple requests
+                # For now, return empty list if symbol not provided
+                logger.warning("Symbol is required for aget_all_orders, returning empty list")
+                return []
+
+            params: dict[str, Any] = {"symbol": symbol, "limit": min(limit, 1000)}
+            if order_id:
+                params["orderId"] = order_id
+            if start_time:
+                params["startTime"] = start_time
+            if end_time:
+                params["endTime"] = end_time
+
+            data = await self._request("GET", "/fapi/v1/allOrders", params, signed=True)
+            return [self._parse_order_data(order) for order in data]
+        except Exception as e:
+            logger.exception("Failed to get all orders", symbol=symbol, error=str(e))
+            raise
+
+    async def aclose_position(self, symbol: str, position_side: str = "BOTH") -> BinanceFuturesOrder | None:
         """
         Close an open position.
 
@@ -805,28 +856,96 @@ class BinanceClient:
 
         Returns
         -------
-        BinanceFuturesOrder
-            Closing order information
+        BinanceFuturesOrder | None
+            Closing order information, or None if no open position found
         """
         try:
             positions = await self.aget_positions(symbol)
-            position = next((p for p in positions if p.position_side == position_side), None)
 
-            if not position:
-                raise ValueError(f"No open position found for {symbol} {position_side}")
+            if position_side == "BOTH":
+                # Close both LONG and SHORT positions
+                # Binance positions can have position_side="BOTH" (one-way mode) or explicit "LONG"/"SHORT"
+                # For "BOTH" positions, direction is determined by sign of position_amount
+                long_positions: list[BinanceFuturesPosition] = []
+                short_positions: list[BinanceFuturesPosition] = []
 
-            # Determine closing side (opposite of position)
-            close_side = "SELL" if position.position_amount > 0 else "BUY"
-            quantity = abs(position.position_amount)
+                for pos in positions:
+                    if pos.position_side == "LONG":
+                        long_positions.append(pos)
+                    elif pos.position_side == "SHORT":
+                        short_positions.append(pos)
+                    elif pos.position_side == "BOTH":
+                        # One-way mode: determine direction from position_amount sign
+                        if pos.position_amount > 0:
+                            long_positions.append(pos)
+                        elif pos.position_amount < 0:
+                            short_positions.append(pos)
 
-            return await self.aplace_order(
-                symbol=symbol,
-                side=close_side,
-                order_type="MARKET",
-                quantity=quantity,
-                position_side=position_side,
-                reduce_only=True,
-            )
+                if not long_positions and not short_positions:
+                    return None
+
+                order_result: BinanceFuturesOrder | None = None
+
+                # Close all LONG positions
+                for long_pos in long_positions:
+                    close_side_long = "SELL" if long_pos.position_amount > 0 else "BUY"
+                    quantity_long = abs(long_pos.position_amount)
+                    order_result = await self.aplace_order(
+                        symbol=symbol,
+                        side=close_side_long,
+                        order_type="MARKET",
+                        quantity=quantity_long,
+                        position_side=long_pos.position_side,  # Use original position_side
+                        reduce_only=True,
+                    )
+
+                # Close all SHORT positions
+                for short_pos in short_positions:
+                    close_side_short = "SELL" if short_pos.position_amount > 0 else "BUY"
+                    quantity_short = abs(short_pos.position_amount)
+                    order_result = await self.aplace_order(
+                        symbol=symbol,
+                        side=close_side_short,
+                        order_type="MARKET",
+                        quantity=quantity_short,
+                        position_side=short_pos.position_side,  # Use original position_side
+                        reduce_only=True,
+                    )
+
+                # Return the last order executed
+                return order_result
+            else:
+                # Close specific position side (LONG or SHORT)
+                # Also handle positions with position_side="BOTH" where direction is determined by sign
+                position = None
+                for pos in positions:
+                    if pos.position_side == position_side:
+                        position = pos
+                        break
+                    elif pos.position_side == "BOTH":
+                        # One-way mode: check if position direction matches requested side
+                        if position_side == "LONG" and pos.position_amount > 0:
+                            position = pos
+                            break
+                        elif position_side == "SHORT" and pos.position_amount < 0:
+                            position = pos
+                            break
+
+                if not position:
+                    return None
+
+                # Determine closing side (opposite of position)
+                close_side = "SELL" if position.position_amount > 0 else "BUY"
+                quantity = abs(position.position_amount)
+
+                return await self.aplace_order(
+                    symbol=symbol,
+                    side=close_side,
+                    order_type="MARKET",
+                    quantity=quantity,
+                    position_side=position.position_side,  # Use original position_side
+                    reduce_only=True,
+                )
         except Exception as e:
             logger.exception("Failed to close position", symbol=symbol, error=str(e))
             raise
